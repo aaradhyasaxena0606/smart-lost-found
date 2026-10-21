@@ -1,0 +1,47 @@
+{
+  "name": "smart-lost-found",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart Lost & Found - AI-assisted campus item recovery system using PostGIS spatial indexing and relational data management",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "start": "npm run start --workspace server",
+    "build": "npm run build --workspace client",
+    "preview": "npm run preview --workspace client",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"{server,client,database}/**/*.{js,jsx,sql,json,css}\" \"*.{md,json}\"",
+    "db:create": "node database/scripts/create-databases.js",
+    "db:migrate": "node database/scripts/migrate.js",
+    "db:rollback": "node database/scripts/migrate.js --rollback",
+    "db:seed": "node server/src/scripts/seed.js",
+    "db:setup": "npm run db:create && npm run db:migrate && npm run db:seed",
+    "db:reset": "node database/scripts/migrate.js --reset && npm run db:seed",
+    "db:status": "node database/scripts/migrate.js --status",
+    "db:explain": "node database/scripts/explain.js",
+    "api:smoke": "node database/scripts/smoke-api.js",
+    "test": "npm run test --workspace server",
+    "test:setup": "node database/scripts/migrate.js --env=test",
+    "test:reset": "node database/scripts/migrate.js --env=test --reset"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "concurrently": "^10.0.6",
+    "dotenv": "^16.6.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "pg": "^8.23.1",
+    "prettier": "^3.9.10"
+  }
+}

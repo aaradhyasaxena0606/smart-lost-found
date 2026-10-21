@@ -1,0 +1,18 @@
+# Normalise line endings in the repository to LF (the project's .editorconfig
+# and Prettier config both specify LF), regardless of the platform used to clone.
+* text=auto eol=lf
+
+# Explicitly binary assets so Git never attempts text conversions.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Keep shell/SQL scripts as-is.
+*.sh text eol=lf
+*.sql text eol=lf
