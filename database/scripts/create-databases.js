@@ -10,7 +10,7 @@
  * fresh database is schema-identical to an existing one.
  */
 import pg from 'pg';
-import { databaseUrlFor, describeConnection } from './lib/env.js';
+import { databaseUrlFor, describeConnection, clientOptions } from './lib/env.js';
 
 async function ensureDatabase(adminClient, dbName) {
   const { rows } = await adminClient.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
@@ -48,7 +48,7 @@ async function main() {
   const adminUrl = new URL(base.toString());
   adminUrl.pathname = '/postgres';
 
-  const admin = new pg.Client({ connectionString: adminUrl.toString() });
+  const admin = new pg.Client(clientOptions(adminUrl.toString()));
   await admin.connect();
   console.log(`Connected to ${describeConnection(adminUrl.toString())}`);
 

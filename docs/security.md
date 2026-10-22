@@ -195,11 +195,11 @@ filename containing `../` is replaced by a generated name.
 
 `audit_logs` is append-only; the application only inserts. Recorded actions:
 
-`user.registered`, `user.login`, `user.password_changed`, `item.created`,
-`item.updated`, `item.status_changed`, `item.moderated`, `item.soft_deleted`,
-`item.image_uploaded`, `item.image_deleted`, `matches.recalculated`,
-`match.dismissed`, `claim.submitted`, `claim.approved`, `claim.rejected`,
-`claim.withdrawn`.
+`user.registered`, `user.login`, `user.password_changed`, `user.role_granted`,
+`item.created`, `item.updated`, `item.status_changed`, `item.moderated`,
+`item.soft_deleted`, `item.image_uploaded`, `item.image_deleted`,
+`matches.recalculated`, `match.dismissed`, `claim.submitted`, `claim.approved`,
+`claim.rejected`, `claim.withdrawn`.
 
 `metadata` carries an explicit, allow-listed field set (for example
 `{ from: "open", to: "rejected", reason }`) so credentials and private evidence can

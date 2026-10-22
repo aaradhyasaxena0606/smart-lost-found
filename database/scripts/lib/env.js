@@ -67,3 +67,25 @@ export function describeConnection(url) {
     return '<unparseable connection string>';
   }
 }
+
+/**
+ * Connection options shared by every database script.
+ *
+ * Honours PG_SEARCH_PATH so that managed providers which install PostGIS outside
+ * `public` (Supabase uses `extensions`) work without moving the extension. The
+ * value is sent as a server startup parameter, so it is never interpolated into
+ * SQL. It is validated here as well as in the server config.
+ */
+export function clientOptions(connectionString) {
+  const searchPath = process.env.PG_SEARCH_PATH;
+  if (!searchPath) return { connectionString };
+
+  if (!/^[A-Za-z0-9_,$" ]+$/.test(searchPath) || searchPath.length > 200) {
+    throw new Error(
+      'PG_SEARCH_PATH contains characters that are not allowed. Use a comma-separated list of schema names.'
+    );
+  }
+  // A startup `options` value is terminated by whitespace, so "public, extensions"
+  // would be parsed as "public," plus a stray argument. Remove spaces.
+  return { connectionString, options: `-c search_path=${searchPath.replace(/\s+/g, '')}` };
+}

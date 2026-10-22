@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import pg from 'pg';
-import { MIGRATIONS_DIR, databaseUrlFor, parseArgs, describeConnection } from './lib/env.js';
+import { MIGRATIONS_DIR, databaseUrlFor, parseArgs, describeConnection, clientOptions } from './lib/env.js';
 
 const { flags, options } = parseArgs();
 const target = options.env === 'test' ? 'test' : 'dev';
@@ -141,7 +141,7 @@ async function printStatus(client) {
 }
 
 async function main() {
-  const client = new pg.Client({ connectionString: url });
+  const client = new pg.Client(clientOptions(url));
   await client.connect();
   console.log(`Migration target: ${describeConnection(url)} (${target})`);
 

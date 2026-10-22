@@ -325,6 +325,7 @@ service**, and submits one pending claim so the administrator queue is not empty
 | `npm run db:rollback` | Alias of `db:reset`; migrations are forward-only, so there are no down files |
 | `npm run db:explain` | `EXPLAIN ANALYZE` walkthrough on 100 000 synthetic rows, **rolled back** |
 | `npm run api:smoke` | 69 live HTTP checks against a running server |
+| `npm run admin:create -- --email=… --name="…"` | Create the first administrator on a hosted database (no demo data) |
 | `npm run test:setup` | Apply migrations to the **test** database |
 | `npm run test:reset` | Reset the test database schema and re-apply |
 
@@ -686,6 +687,10 @@ npm run test           # optional: the suite runs against TEST_DATABASE_URL
 to a moment before an incident, not just to the last nightly dump.
 
 ## 18. Deployment notes
+
+A full free-tier deployment guide covering Supabase, Render and Vercel — including
+the Supabase `extensions`-schema requirement and the image-storage limitation — is
+in [`docs/deployment.md`](./docs/deployment.md).
 
 1. Build the client: `npm run build` → static assets in `client/dist`.
 2. Run the API with `NODE_ENV=production npm start` (no watch mode).

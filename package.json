@@ -31,6 +31,7 @@
     "db:status": "node database/scripts/migrate.js --status",
     "db:explain": "node database/scripts/explain.js",
     "api:smoke": "node database/scripts/smoke-api.js",
+    "admin:create": "node server/src/scripts/create-admin.js",
     "test": "npm run test --workspace server",
     "test:setup": "node database/scripts/migrate.js --env=test",
     "test:reset": "node database/scripts/migrate.js --env=test --reset"

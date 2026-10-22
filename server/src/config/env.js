@@ -36,6 +36,21 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required (see .env.example)'),
   TEST_DATABASE_URL: z.string().optional(),
 
+  // Managed Postgres often has a low connection limit (a free Supabase project
+  // allows ~60 direct connections including its own pooler). A serverless or
+  // free-tier deployment should keep this small.
+  PGPOOL_MAX: z.coerce.number().int().positive().max(100).optional(),
+
+  // Some managed providers install PostGIS into a schema other than `public`
+  // (Supabase uses `extensions`). Setting this makes the type/function lookup
+  // work without moving the extension. Applied as a startup parameter, so it is
+  // never interpolated into SQL.
+  PG_SEARCH_PATH: z
+    .string()
+    .max(200)
+    .regex(/^[A-Za-z0-9_,$" ]+$/, 'PG_SEARCH_PATH may only contain schema names, commas and quotes')
+    .optional(),
+
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRES_IN: z.string().default('1d'),
 
@@ -116,6 +131,8 @@ export const config = Object.freeze({
     .filter(Boolean),
 
   databaseUrl: raw.NODE_ENV === 'test' && raw.TEST_DATABASE_URL ? raw.TEST_DATABASE_URL : raw.DATABASE_URL,
+  dbPoolMax: raw.PGPOOL_MAX ?? (raw.NODE_ENV === 'test' ? 5 : 10),
+  pgSearchPath: raw.PG_SEARCH_PATH ?? null,
 
   jwtSecret: raw.JWT_SECRET,
   jwtExpiresIn: raw.JWT_EXPIRES_IN,

@@ -19,7 +19,7 @@
  * docs/database-design.md.
  */
 import pg from 'pg';
-import { databaseUrlFor, describeConnection, parseArgs } from './lib/env.js';
+import { databaseUrlFor, describeConnection, parseArgs, clientOptions } from './lib/env.js';
 
 const { options } = parseArgs();
 const target = options.env === 'test' ? 'test' : 'dev';
@@ -158,7 +158,7 @@ async function printIndexInventory(client) {
 }
 
 async function main() {
-  const client = new pg.Client({ connectionString: databaseUrlFor(target) });
+  const client = new pg.Client(clientOptions(databaseUrlFor(target)));
   await client.connect();
   console.log(`Query planning demo on ${describeConnection(databaseUrlFor(target))} (${target})`);
   console.log(

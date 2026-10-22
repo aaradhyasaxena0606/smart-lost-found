@@ -23,10 +23,18 @@ types.setTypeParser(types.builtins.INT8, (value) => (value === null ? null : Num
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
-  max: config.isTest ? 5 : 10,
+  max: config.dbPoolMax,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
   application_name: 'smart-lost-found-api',
+  // Applied by the server at connection startup, so there is no race and no SQL
+  // interpolation. Needed when PostGIS lives outside `public` (e.g. Supabase
+  // installs it into `extensions`). Whitespace is stripped because a startup
+  // `options` value is terminated by a space: "public, extensions" would be
+  // parsed as the value "public," plus a stray argument.
+  ...(config.pgSearchPath
+    ? { options: `-c search_path=${config.pgSearchPath.replace(/\s+/g, '')}` }
+    : {}),
 });
 
 pool.on('error', (error) => {

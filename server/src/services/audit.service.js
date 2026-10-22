@@ -13,6 +13,8 @@ import { query as dbQuery } from '../config/db.js';
 export const AUDIT_ACTIONS = Object.freeze({
   USER_REGISTERED: 'user.registered',
   USER_LOGIN: 'user.login',
+  USER_PASSWORD_CHANGED: 'user.password_changed',
+  USER_ROLE_GRANTED: 'user.role_granted',
   ITEM_CREATED: 'item.created',
   ITEM_UPDATED: 'item.updated',
   ITEM_STATUS_CHANGED: 'item.status_changed',
