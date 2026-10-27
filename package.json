@@ -32,6 +32,7 @@
     "db:explain": "node database/scripts/explain.js",
     "api:smoke": "node database/scripts/smoke-api.js",
     "admin:create": "node server/src/scripts/create-admin.js",
+    "deploy:prepare": "node server/src/scripts/deploy-prepare.js",
     "test": "npm run test --workspace server",
     "test:setup": "node database/scripts/migrate.js --env=test",
     "test:reset": "node database/scripts/migrate.js --env=test --reset"
