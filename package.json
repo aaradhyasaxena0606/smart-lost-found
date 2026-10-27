@@ -26,6 +26,7 @@
     "db:migrate": "node database/scripts/migrate.js",
     "db:rollback": "node database/scripts/migrate.js --rollback",
     "db:seed": "node server/src/scripts/seed.js",
+    "db:seed:reference": "node server/src/scripts/seed.js --reference-only",
     "db:setup": "npm run db:create && npm run db:migrate && npm run db:seed",
     "db:reset": "node database/scripts/migrate.js --reset && npm run db:seed",
     "db:status": "node database/scripts/migrate.js --status",

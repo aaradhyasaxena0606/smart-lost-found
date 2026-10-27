@@ -129,6 +129,20 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------
+  // Reference data (categories)
+  // ---------------------------------------------------------------------
+  // Migrations create the `categories` table but do not populate it; the report
+  // form is unusable without these rows. Only the reference seed is loaded here —
+  // never the demo accounts.
+  heading('Loading reference data');
+  try {
+    await runNodeScript('server/src/scripts/seed.js', ['--reference-only']);
+  } catch (error) {
+    fail(`Reference seed failed: ${error.message}`, 'Run `npm run db:seed:reference` to retry.');
+    return;
+  }
+
+  // ---------------------------------------------------------------------
   // First administrator
   // ---------------------------------------------------------------------
   heading('Administrator account');

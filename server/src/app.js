@@ -51,7 +51,9 @@ export function createApp() {
         // Allow same-origin/tooling requests with no Origin header.
         if (!origin) return callback(null, true);
         if (config.clientOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+        // Withhold the CORS headers rather than throwing: the browser blocks the
+        // response, and a policy decision should not surface as a 500.
+        return callback(null, false);
       },
       credentials: false,
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -88,8 +88,14 @@ Do this from your machine, not from the host:
 ```bash
 # In .env, with DATABASE_URL pointing at the session pooler:
 npm run db:migrate
+npm run db:seed:reference          # category lookup data only — no demo accounts
 npm run admin:create -- --email=you@example.com --name="Your Name"
 ```
+
+`db:migrate` creates the `categories` table but does not populate it, and the report
+form is unusable without those rows. `db:seed:reference` loads only the
+version-controlled category list. (`db:seed` would also create demo students and a
+published-password administrator — never use it on a hosted database.)
 
 Two commands are **dangerous or invalid on Supabase** and must be avoided:
 

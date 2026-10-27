@@ -283,11 +283,29 @@ async function seedClaim(users) {
 }
 
 async function main() {
+  // `--reference-only` loads just the version-controlled reference data
+  // (categories) and never creates demo users, reports or claims. This is what a
+  // real deployment uses; the full seed is for local development only.
+  const referenceOnly = process.argv.includes('--reference-only');
+
   console.log(`Seeding ${describeConnection(databaseUrlFor(config.isTest ? 'test' : 'dev'))}`);
-  console.log(`Demo account password for every seeded user: ${DEMO_PASSWORD} (development only)`);
+  if (referenceOnly) {
+    console.log('Mode: reference data only (no demo accounts, reports or claims).');
+  } else {
+    console.log(`Demo account password for every seeded user: ${DEMO_PASSWORD} (development only)`);
+  }
 
   console.log('\n1. SQL seed files');
   await runSqlSeeds();
+
+  if (referenceOnly) {
+    const counts = await query(
+      `SELECT (SELECT COUNT(*)::int FROM categories) AS categories`
+    );
+    console.log(`\nReference data loaded: ${counts.rows[0].categories} categories.`);
+    console.log('Demo accounts, reports and claims were NOT created.');
+    return;
+  }
 
   console.log('\n2. Demo accounts');
   const users = await seedUsers();

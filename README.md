@@ -320,6 +320,7 @@ service**, and submits one pending claim so the administrator queue is not empty
 | `npm run db:migrate` | Apply pending migrations (each in its own transaction) |
 | `npm run db:status` | Show applied and pending migrations, and orphaned records |
 | `npm run db:seed` | Load categories and fictional demo data (idempotent) |
+| `npm run db:seed:reference` | Load **only** the category lookup data (no demo accounts) — use this on a hosted database |
 | `npm run db:setup` | `db:create` + `db:migrate` + `db:seed` |
 | `npm run db:reset` | **Drop `schema public` and re-apply every migration** (refuses when `NODE_ENV=production`) |
 | `npm run db:rollback` | Alias of `db:reset`; migrations are forward-only, so there are no down files |
