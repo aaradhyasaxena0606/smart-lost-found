@@ -12,8 +12,9 @@ services:
     name: smart-lost-found-api
     runtime: node
     plan: free
-    # Pick the region closest to your Supabase project to reduce query latency.
-    region: oregon
+    # Closest Render region to an Asia Supabase project (Mumbai/Singapore).
+    # Render has no Mumbai region; Singapore keeps query latency low.
+    region: singapore
     buildCommand: npm install
     # Root `npm start` runs `npm run start --workspace server` (no watch mode).
     startCommand: npm start
