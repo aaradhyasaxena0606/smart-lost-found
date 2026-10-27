@@ -111,6 +111,16 @@ psql "$DATABASE_URL" -c "SELECT indexname FROM pg_indexes WHERE indexname = 'ite
 
 ## 2. Render: run the API
 
+The repository includes `render.yaml`, so the fastest path is a **Blueprint**:
+
+1. <https://render.com> → *New* → *Blueprint* → select the repository. Render reads
+   `render.yaml` and creates the web service with the correct build/start commands,
+   health check and non-secret environment variables.
+2. Enter the two values it prompts for: `DATABASE_URL` (Supabase transaction
+   pooler) and `CLIENT_ORIGIN` (your Vercel URL).
+
+Manual alternative:
+
 1. <https://render.com> → *New* → *Web Service* → connect
    `aaradhyasaxena0606/smart-lost-found`.
 2. Settings:
@@ -158,6 +168,11 @@ rather than running insecurely.
 1. <https://vercel.com> → *Add New* → *Project* → import the repository.
 2. **Root Directory:** `client`
 3. Framework preset: **Vite** · Build: `npm run build` · Output: `dist`
+
+   The repository already contains `client/vercel.json`, which pins exactly
+   these values and adds the SPA fallback rewrite. Without that rewrite, sharing a
+   deep link such as `/items/5` would return Vercel's 404 instead of the app.
+
 4. Environment variables (these are inlined at **build** time, so redeploy after
    changing them):
 

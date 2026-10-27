@@ -1,0 +1,55 @@
+# Render Blueprint — one-click provisioning of the API.
+#
+# Usage: Render dashboard -> New -> Blueprint -> select this repository.
+# Render reads this file, creates the web service, and prompts for the two
+# secret values marked `sync: false` (DATABASE_URL and CLIENT_ORIGIN).
+#
+# The frontend is NOT defined here: it is deployed as a static site on Vercel
+# (see docs/deployment.md), because Vercel serves static assets from its CDN and
+# does not sleep.
+services:
+  - type: web
+    name: smart-lost-found-api
+    runtime: node
+    plan: free
+    # Pick the region closest to your Supabase project to reduce query latency.
+    region: oregon
+    buildCommand: npm install
+    # Root `npm start` runs `npm run start --workspace server` (no watch mode).
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Supabase connection string (transaction pooler, port 6543).
+      # Set this in the dashboard — it must never be committed.
+      - key: DATABASE_URL
+        sync: false
+
+      # Supabase installs PostGIS into the `extensions` schema, so it must be on
+      # the search path or the `geography` type will not resolve.
+      - key: PG_SEARCH_PATH
+        value: "public,extensions"
+
+      # Free Postgres allows few connections; keep the pool small.
+      - key: PGPOOL_MAX
+        value: "5"
+
+      # Render generates a strong value automatically for this deployment.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Your Vercel URL, e.g. https://smart-lost-found.vercel.app
+      # No trailing slash. Required for browser requests to be accepted.
+      - key: CLIENT_ORIGIN
+        sync: false
+
+      # Deterministic matching only; no external AI calls.
+      - key: AI_PROVIDER
+        value: disabled
+
+      # Render's filesystem is ephemeral. Uploads work for the life of the
+      # instance and are lost on redeploy or restart (see docs/deployment.md §5).
+      - key: UPLOAD_DIR
+        value: /tmp/uploads
