@@ -1,10 +1,88 @@
 /** Administrator claim review queue with approve/reject decisions (FR-19, FR-20). */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { claimsApi } from '../api/endpoints.js';
 import { useAsyncData } from '../hooks/useAsyncData.js';
 import ClaimCard from '../components/ClaimCard.jsx';
 import Pagination from '../components/Pagination.jsx';
 import { Loading, ErrorMessage, EmptyState, Field } from '../components/Feedback.jsx';
+
+/**
+ * Decision dialog.
+ *
+ * This used to be an inline form rendered after the claim list, which on a
+ * one-claim queue placed it below the fold: clicking "Approve claim" appeared to
+ * do nothing. A native <dialog> is always centred, traps focus and closes on Esc.
+ */
+function DecisionDialog({ decision, busy, error, onSubmit, onClose }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (decision.open && !dialog.open) dialog.showModal();
+    if (!decision.open && dialog.open) dialog.close();
+  }, [decision.open]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    const handleCancel = (event) => {
+      event.preventDefault();
+      onClose();
+    };
+    dialog.addEventListener('cancel', handleCancel);
+    return () => dialog.removeEventListener('cancel', handleCancel);
+  }, [onClose]);
+
+  const isApprove = decision.value === 'approved';
+  const claimId = decision.claim?.claimId;
+  const title = decision.claim?.item?.title;
+
+  return (
+    <dialog ref={dialogRef} className="dialog" aria-labelledby="decision-title">
+      <h2 id="decision-title">
+        {isApprove ? 'Approve' : 'Reject'} claim #{claimId}
+      </h2>
+      <p>{title}</p>
+      <p>
+        {isApprove
+          ? 'The item will be marked as returned, any competing claims will be rejected, and the claimant will be notified.'
+          : 'A reason is required. The claimant sees it, and the item returns to “open” if no other claim is active.'}
+      </p>
+
+      <ErrorMessage error={error} />
+
+      <Field
+        id="review-reason"
+        label="Review reason"
+        required={!isApprove}
+        hint="Recorded in the audit log and shown to the claimant when rejecting."
+      >
+        <textarea
+          id="review-reason"
+          rows={4}
+          maxLength={1000}
+          value={decision.reason}
+          onChange={(event) => onSubmit({ type: 'reason', value: event.target.value })}
+        />
+      </Field>
+
+      <div className="dialog__actions">
+        <button type="button" className="button button--secondary" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={isApprove ? 'button' : 'button button--danger'}
+          onClick={() => onSubmit({ type: 'confirm' })}
+          disabled={busy}
+        >
+          {busy ? 'Saving…' : isApprove ? 'Confirm approval' : 'Confirm rejection'}
+        </button>
+      </div>
+    </dialog>
+  );
+}
 
 export function AdminClaimsPage() {
   const [includeDecided, setIncludeDecided] = useState(false);
@@ -19,19 +97,35 @@ export function AdminClaimsPage() {
     [page, includeDecided]
   );
 
-  const submitDecision = async (event) => {
-    event.preventDefault();
+  const closeDialog = () => {
+    setDecision({ open: false, claim: null, value: 'approved', reason: '' });
+    setActionError(null);
+  };
+
+  const handleDialogEvent = async ({ type, value }) => {
+    if (type === 'reason') {
+      setDecision((previous) => ({ ...previous, reason: value }));
+      return;
+    }
+
     if (!decision.claim) return;
+
+    // A rejection without a reason is refused by the API too; check here so the
+    // dialog can show the message without a round trip.
+    if (decision.value === 'rejected' && decision.reason.trim() === '') {
+      setActionError(new Error('A review reason is required when rejecting a claim.'));
+      return;
+    }
 
     setBusy(true);
     setActionError(null);
     try {
       await claimsApi.decide(decision.claim.claimId, {
         decision: decision.value,
-        reviewReason: decision.reason || null,
+        reviewReason: decision.reason.trim() || null,
       });
       setNotice(`Claim #${decision.claim.claimId} was ${decision.value}.`);
-      setDecision({ open: false, claim: null, value: 'approved', reason: '' });
+      closeDialog();
       query.reload();
     } catch (caught) {
       setActionError(caught);
@@ -70,16 +164,12 @@ export function AdminClaimsPage() {
           {notice}
         </div>
       ) : null}
-      <ErrorMessage error={actionError} />
 
       {query.loading ? <Loading label="Loading the review queue…" /> : null}
       <ErrorMessage error={query.error} onRetry={query.reload} />
 
       {!query.loading && !query.error && (query.data ?? []).length === 0 ? (
-        <EmptyState
-          title="Nothing to review"
-          description="Pending claims from the whole campus appear here."
-        />
+        <EmptyState title="Nothing to review" description="Pending claims from the whole campus appear here." />
       ) : null}
 
       {(query.data ?? []).length > 0 ? (
@@ -90,7 +180,10 @@ export function AdminClaimsPage() {
                 key={claim.claimId}
                 claim={claim}
                 variant="admin"
-                onDecide={(target, value) => setDecision({ open: true, claim: target, value, reason: '' })}
+                onDecide={(target, value) => {
+                  setActionError(null);
+                  setDecision({ open: true, claim: target, value, reason: '' });
+                }}
                 busy={busy}
               />
             ))}
@@ -99,44 +192,13 @@ export function AdminClaimsPage() {
         </>
       ) : null}
 
-      {decision.open ? (
-        <form className="card form form--dialog" onSubmit={submitDecision}>
-          <h2>
-            {decision.value === 'approved' ? 'Approve' : 'Reject'} claim #{decision.claim?.claimId}
-          </h2>
-          <p>
-            {decision.value === 'approved'
-              ? 'The item will be marked as returned and the claimant will be notified.'
-              : 'A reason is required. The claimant will see it, and the item stays available if no other claim is active.'}
-          </p>
-          <Field
-            id="review-reason"
-            label="Review reason"
-            required={decision.value === 'rejected'}
-            hint="Recorded in the audit log and shown to the claimant when rejecting."
-          >
-            <textarea
-              id="review-reason"
-              rows={3}
-              maxLength={1000}
-              value={decision.reason}
-              onChange={(event) => setDecision({ ...decision, reason: event.target.value })}
-            />
-          </Field>
-          <div className="button-row">
-            <button type="submit" className={decision.value === 'approved' ? 'button' : 'button button--danger'} disabled={busy}>
-              {busy ? 'Saving…' : `Confirm ${decision.value === 'approved' ? 'approval' : 'rejection'}`}
-            </button>
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() => setDecision({ open: false, claim: null, value: 'approved', reason: '' })}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : null}
+      <DecisionDialog
+        decision={decision}
+        busy={busy}
+        error={actionError}
+        onSubmit={handleDialogEvent}
+        onClose={closeDialog}
+      />
     </div>
   );
 }
