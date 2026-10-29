@@ -480,10 +480,30 @@ export async function recalculateForItem(itemId, options = {}) {
             OR
             (found_item_id = $1 AND NOT (lost_item_id  = ANY($2::int[])))
           )
-        RETURNING match_id`,
+        RETURNING match_id, lost_item_id, found_item_id`,
       [itemId, candidateIds]
     );
     removed += stale.rowCount;
+
+    // A withdrawn suggestion must not leave "you have a possible match" sitting in
+    // someone's inbox, pointing at a pair that no longer qualifies. Unread
+    // item_matched notifications for the pair are removed with it; notifications
+    // the user has already read are left as history.
+    for (const row of stale.rows) {
+      await client.query(
+        `DELETE FROM notifications n
+           USING items l, items f
+          WHERE l.item_id = $1 AND f.item_id = $2
+            AND n.notification_type = 'item_matched'
+            AND n.is_read = FALSE
+            AND (
+              (n.user_id = l.reporter_id AND n.related_item_id = f.item_id)
+              OR
+              (n.user_id = f.reporter_id AND n.related_item_id = l.item_id)
+            )`,
+        [row.lost_item_id, row.found_item_id]
+      );
+    }
 
     await auditService.record(
       {
@@ -516,6 +536,7 @@ async function notifyNewMatch(client, { matchId, lostItem, foundItem, overallSco
     userId: lostItem.reporter_id,
     title: 'Possible match for your lost item',
     message: `A found report ("${foundItem.title}") looks similar to your lost report ("${lostItem.title}"). ${scoreText}. Open the matches page to review it.`,
+    relatedItemId: foundItem.item_id,
   });
 
   if (!recipients.has(foundItem.reporter_id)) {
@@ -523,6 +544,7 @@ async function notifyNewMatch(client, { matchId, lostItem, foundItem, overallSco
       userId: foundItem.reporter_id,
       title: 'Possible match for the item you found',
       message: `A lost report ("${lostItem.title}") looks similar to the item you found ("${foundItem.title}"). ${scoreText}. Open the matches page to review it.`,
+      relatedItemId: lostItem.item_id,
     });
   }
 
@@ -533,14 +555,15 @@ async function notifyNewMatch(client, { matchId, lostItem, foundItem, overallSco
         type: notificationService.NOTIFICATION_TYPES.ITEM_MATCHED,
         title: recipient.title,
         message: recipient.message,
-        relatedItemId: null,
+        // Point at the *counterpart* report so the notification can be retracted
+        // if the suggestion is later withdrawn (see the stale-match cleanup).
+        relatedItemId: recipient.relatedItemId,
       },
       client
     );
   }
 
-  // matchId is intentionally not attached to the notification: the notification
-  // table references items and claims, and the match is reachable from the item.
+  // The match itself is reachable from either report, so no extra id is stored.
   void matchId;
 }
 

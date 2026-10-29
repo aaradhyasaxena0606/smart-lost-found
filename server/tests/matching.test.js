@@ -366,6 +366,12 @@ describe('Recalculation triggers', () => {
     );
     assert.equal(before.rows[0].n, 1, 'the close pair should be suggested');
 
+    const notificationBefore = await query(
+      `SELECT COUNT(*)::int AS n FROM notifications
+        WHERE notification_type = 'item_matched' AND is_read = FALSE`
+    );
+    assert.ok(notificationBefore.rows[0].n >= 2, 'both reporters should be notified about a new suggestion');
+
     // Move the found report ~55 km away. 0.5 degrees of latitude is far beyond the
     // default 1500 m radius, so the pair is no longer a candidate at all.
     const moved = await api
@@ -383,6 +389,14 @@ describe('Recalculation triggers', () => {
       0,
       'a suggestion outside the radius and time window must not linger with a stale score'
     );
+
+    // The "possible match" notifications must be withdrawn with it, otherwise the
+    // inbox keeps advertising a pair that no longer qualifies.
+    const notificationAfter = await query(
+      `SELECT COUNT(*)::int AS n FROM notifications
+        WHERE notification_type = 'item_matched' AND is_read = FALSE`
+    );
+    assert.equal(notificationAfter.rows[0].n, 0, 'unread match notifications must be retracted');
   });
 
   test('POST /matches/recalculate refreshes the caller\'s own reports', async () => {
