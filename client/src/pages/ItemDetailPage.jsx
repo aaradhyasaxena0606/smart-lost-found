@@ -32,6 +32,26 @@ const ALLOWED_TRANSITIONS = {
   rejected: ['open', 'closed'],
 };
 
+/**
+ * Human labels for the status controls.
+ *
+ * `matched`, `claimed` and `returned` are outcomes of the matching engine and the
+ * claim workflow; an owner should not be able to assert them by hand. Owners are
+ * therefore offered only close/reopen, while administrators keep the full set for
+ * moderation. ("Claimed" on a lost report means nothing — claims only exist for
+ * found reports.)
+ */
+const STATUS_LABELS = {
+  open: 'Reopen report',
+  closed: 'Close report',
+  matched: 'Mark as matched',
+  claimed: 'Mark as claimed',
+  returned: 'Mark as returned',
+  rejected: 'Reject report',
+};
+
+const OWNER_ALLOWED_STATUSES = new Set(['open', 'closed']);
+
 export function ItemDetailPage() {
   const { itemId } = useParams();
   const navigate = useNavigate();
@@ -84,7 +104,9 @@ export function ItemDetailPage() {
     );
   }
 
-  const transitions = ALLOWED_TRANSITIONS[item.status] ?? [];
+  const transitions = (ALLOWED_TRANSITIONS[item.status] ?? []).filter(
+    (status) => isAdmin || OWNER_ALLOWED_STATUSES.has(status)
+  );
 
   const handleClaimSubmit = async (event) => {
     event.preventDefault();
@@ -328,7 +350,7 @@ export function ItemDetailPage() {
 
             {transitions.length > 0 ? (
               <div className="button-row">
-                <span id="status-change-label">Change status:</span>
+                <span id="status-change-label">Status:</span>
                 {transitions.map((status) => (
                   <button
                     key={status}
@@ -337,13 +359,17 @@ export function ItemDetailPage() {
                     onClick={() => handleStatusChange(status)}
                     disabled={busy}
                   >
-                    {status}
+                    {STATUS_LABELS[status] ?? status}
                   </button>
                 ))}
               </div>
             ) : (
               <p className="claim-card__note">No further status changes are available for this report.</p>
             )}
+            <p className="field-hint">
+              Matched, claimed and returned are set automatically by the matching engine and the claim workflow.
+              {isAdmin ? ' Administrators see the full lifecycle for moderation.' : ' You can close or reopen your own report.'}
+            </p>
 
             <div className="button-row">
               <Field id="item-add-photo" label="Add another photo">
