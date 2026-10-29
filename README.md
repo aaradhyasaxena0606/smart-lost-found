@@ -71,21 +71,25 @@ Screenshots of the running application were captured during verification; see
 
 - register and sign in;
 - create, edit, close and delete their own reports;
-- browse and search all public-safe reports;
+- browse and search **lost** reports (found reports are private, see
+  docs/design-decisions.md DD-02);
 - view ranked candidate matches for their own reports and dismiss suggestions;
-- submit claims for eligible found items and withdraw a pending claim;
+- **decide claims on items they reported as found** (approve or reject, with a reason);
+- submit claims for matched found items, withdraw a pending claim, and **dispute** a
+  rejection;
 - view their own claims and notifications.
 
 **Administrator**
 
 - everything a user can do, plus:
+- **appeals and escalations**: claims disputed by a claimant, or still pending after
+  48 hours, and any claim they choose to override;
 - the report moderation queue (approve, reject with a reason, close);
-- the claim review queue, including the finder's private verification detail needed
-  to judge ownership;
-- approve or reject claims (never their own — enforced by the API and by a database
-  `CHECK` constraint);
-- database-backed statistics and the audit log;
-- account listing.
+- suspected fraud and abuse handling;
+- database-backed statistics, the audit log, and account listing.
+
+Routine claim decisions belong to the finder. This is a documented departure from
+FR-19 — see [`docs/design-decisions.md`](./docs/design-decisions.md) DD-01.
 
 **System**
 

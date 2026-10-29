@@ -98,16 +98,28 @@ async function attachImages(items, client) {
 
 /**
  * Public report search (FR-11, FR-12).
- * Filtering, relevance ranking, radius search and total counting all happen in
- * the database inside fn_search_items (see migration 013).
+ *
+ * Found reports are **not** part of the public catalogue: publishing them lets
+ * someone read the description and craft a convincing claim. They are visible
+ * only to their finder, to administrators, and to users the engine has matched
+ * to them (through the Matches views).
+ *
+ * @param {object} filters
+ * @param {{userId?: number, role?: string}} [viewer]
  */
-export async function searchItems(filters) {
+export async function searchItems(filters, viewer = {}) {
   const { page, limit, offset } = parsePagination(filters);
 
-  // The public API exposes `type` (spec 14); the SQL function uses
-  // `p_report_type`. Both spellings are accepted here so no caller can silently
-  // lose the filter.
-  const reportType = filters.reportType ?? filters.type ?? null;
+  const isAdmin = viewer.role === 'admin';
+  const requestedType = filters.reportType ?? filters.type ?? null;
+
+  if (!isAdmin && requestedType === 'found') {
+    // Do not leak existence: an ordinary caller asking for found reports gets an
+    // empty page rather than a 403 that would confirm there is something to hide.
+    return { items: [], meta: buildPageMeta({ page, limit, total: 0 }) };
+  }
+
+  const reportType = isAdmin ? requestedType : 'lost';
 
   const coordinateError = validateCoordinatePair(filters.latitude, filters.longitude);
   if (coordinateError) throw badRequest(coordinateError);
@@ -185,6 +197,21 @@ export async function getItemById(itemId, viewer = {}, includeDeleted = false, c
 
   const isOwner = viewer.userId !== undefined && viewer.userId === item.reporter.userId;
   const isAdmin = viewer.role === 'admin';
+
+  // Found reports are private: only the finder, administrators and users matched
+  // to the item may open it. Everyone else gets a 404 so ids cannot be probed.
+  if (item.reportType === 'found' && !isOwner && !isAdmin) {
+    if (!viewer.userId) return null;
+    const matched = await runner.query(
+      `SELECT 1
+         FROM matches m
+         JOIN items l ON l.item_id = m.lost_item_id
+        WHERE m.found_item_id = $1 AND l.reporter_id = $2
+        LIMIT 1`,
+      [itemId, viewer.userId]
+    );
+    if (matched.rows.length === 0) return null;
+  }
 
   // Private verification data is returned ONLY to the reporter (to edit their own
   // report) or to an administrator. It is never part of a public response.

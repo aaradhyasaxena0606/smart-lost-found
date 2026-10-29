@@ -10,7 +10,7 @@ import * as itemsService from './items.service.js';
 const query = (req) => req.validatedQuery ?? req.query;
 
 export const list = asyncHandler(async (req, res) => {
-  const { items, meta } = await itemsService.searchItems(query(req));
+  const { items, meta } = await itemsService.searchItems(query(req), req.user ?? {});
   return sendOk(res, items, meta);
 });
 

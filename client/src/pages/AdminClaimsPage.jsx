@@ -1,134 +1,61 @@
-/** Administrator claim review queue with approve/reject decisions (FR-19, FR-20). */
-import { useEffect, useRef, useState } from 'react';
+/** Administrator appeal queue: disputed, escalated and exceptional claims (FR-19, FR-20). */
+import { useState } from 'react';
 import { claimsApi } from '../api/endpoints.js';
 import { useAsyncData } from '../hooks/useAsyncData.js';
 import ClaimCard from '../components/ClaimCard.jsx';
+import ClaimDecisionDialog from '../components/ClaimDecisionDialog.jsx';
 import Pagination from '../components/Pagination.jsx';
-import { Loading, ErrorMessage, EmptyState, Field } from '../components/Feedback.jsx';
-
-/**
- * Decision dialog.
- *
- * This used to be an inline form rendered after the claim list, which on a
- * one-claim queue placed it below the fold: clicking "Approve claim" appeared to
- * do nothing. A native <dialog> is always centred, traps focus and closes on Esc.
- */
-function DecisionDialog({ decision, busy, error, onSubmit, onClose }) {
-  const dialogRef = useRef(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (decision.open && !dialog.open) dialog.showModal();
-    if (!decision.open && dialog.open) dialog.close();
-  }, [decision.open]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return undefined;
-    const handleCancel = (event) => {
-      event.preventDefault();
-      onClose();
-    };
-    dialog.addEventListener('cancel', handleCancel);
-    return () => dialog.removeEventListener('cancel', handleCancel);
-  }, [onClose]);
-
-  const isApprove = decision.value === 'approved';
-  const claimId = decision.claim?.claimId;
-  const title = decision.claim?.item?.title;
-
-  return (
-    <dialog ref={dialogRef} className="dialog" aria-labelledby="decision-title">
-      <h2 id="decision-title">
-        {isApprove ? 'Approve' : 'Reject'} claim #{claimId}
-      </h2>
-      <p>{title}</p>
-      <p>
-        {isApprove
-          ? 'The item will be marked as returned, any competing claims will be rejected, and the claimant will be notified.'
-          : 'A reason is required. The claimant sees it, and the item returns to “open” if no other claim is active.'}
-      </p>
-
-      <ErrorMessage error={error} />
-
-      <Field
-        id="review-reason"
-        label="Review reason"
-        required={!isApprove}
-        hint="Recorded in the audit log and shown to the claimant when rejecting."
-      >
-        <textarea
-          id="review-reason"
-          rows={4}
-          maxLength={1000}
-          value={decision.reason}
-          onChange={(event) => onSubmit({ type: 'reason', value: event.target.value })}
-        />
-      </Field>
-
-      <div className="dialog__actions">
-        <button type="button" className="button button--secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={isApprove ? 'button' : 'button button--danger'}
-          onClick={() => onSubmit({ type: 'confirm' })}
-          disabled={busy}
-        >
-          {busy ? 'Saving…' : isApprove ? 'Confirm approval' : 'Confirm rejection'}
-        </button>
-      </div>
-    </dialog>
-  );
-}
+import { Loading, ErrorMessage, EmptyState } from '../components/Feedback.jsx';
 
 export function AdminClaimsPage() {
+  const [escalatedOnly, setEscalatedOnly] = useState(true);
   const [includeDecided, setIncludeDecided] = useState(false);
   const [page, setPage] = useState(1);
   const [decision, setDecision] = useState({ open: false, claim: null, value: 'approved', reason: '' });
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState(null);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
   const query = useAsyncData(
-    () => claimsApi.queue({ page, limit: 10, includeDecided: includeDecided ? true : undefined }),
-    [page, includeDecided]
+    () =>
+      claimsApi.queue({
+        page,
+        limit: 10,
+        includeDecided: includeDecided ? true : undefined,
+        escalatedOnly: escalatedOnly ? true : undefined,
+      }),
+    [page, includeDecided, escalatedOnly]
   );
 
   const closeDialog = () => {
     setDecision({ open: false, claim: null, value: 'approved', reason: '' });
-    setActionError(null);
+    setError(null);
   };
 
-  const handleDialogEvent = async ({ type, value }) => {
+  const handleDecision = async ({ type, value }) => {
     if (type === 'reason') {
       setDecision((previous) => ({ ...previous, reason: value }));
       return;
     }
-
     if (!decision.claim) return;
 
-    // A rejection without a reason is refused by the API too; check here so the
-    // dialog can show the message without a round trip.
     if (decision.value === 'rejected' && decision.reason.trim() === '') {
-      setActionError(new Error('A review reason is required when rejecting a claim.'));
+      setError(new Error('A review reason is required when rejecting a claim.'));
       return;
     }
 
     setBusy(true);
-    setActionError(null);
+    setError(null);
     try {
-      await claimsApi.decide(decision.claim.claimId, {
+      await claimsApi.decideAsAdmin(decision.claim.claimId, {
         decision: decision.value,
         reviewReason: decision.reason.trim() || null,
       });
-      setNotice(`Claim #${decision.claim.claimId} was ${decision.value}.`);
+      setNotice(`Claim #${decision.claim.claimId} was ${decision.value} as an administrator.`);
       closeDialog();
       query.reload();
     } catch (caught) {
-      setActionError(caught);
+      setError(caught);
     } finally {
       setBusy(false);
     }
@@ -137,15 +64,26 @@ export function AdminClaimsPage() {
   return (
     <div className="page">
       <header className="page__header">
-        <h1>Claim review queue</h1>
+        <h1>Claim appeals and escalations</h1>
         <p>
-          Reviewers see the finder&apos;s private verification detail to judge ownership. A claimant&apos;s private
-          evidence is never returned by the API. Approving a claim marks the item returned and rejects any competing
-          claims in the same transaction.
+          Finders decide routine claims. This queue shows what needs an administrator: claims disputed by the
+          claimant, and claims still pending after 48 hours. Deciding here overrides the finder.
         </p>
       </header>
 
       <div className="toolbar">
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={escalatedOnly}
+            onChange={(event) => {
+              setEscalatedOnly(event.target.checked);
+              setPage(1);
+            }}
+          />
+          Only disputed or overdue claims
+        </label>
+
         <label className="checkbox">
           <input
             type="checkbox"
@@ -155,7 +93,7 @@ export function AdminClaimsPage() {
               setPage(1);
             }}
           />
-          Show decided claims as well
+          Include decided claims
         </label>
       </div>
 
@@ -165,11 +103,14 @@ export function AdminClaimsPage() {
         </div>
       ) : null}
 
-      {query.loading ? <Loading label="Loading the review queue…" /> : null}
+      {query.loading ? <Loading label="Loading the appeal queue…" /> : null}
       <ErrorMessage error={query.error} onRetry={query.reload} />
 
       {!query.loading && !query.error && (query.data ?? []).length === 0 ? (
-        <EmptyState title="Nothing to review" description="Pending claims from the whole campus appear here." />
+        <EmptyState
+          title="Nothing needs your attention"
+          description="No disputed or overdue claims. Uncheck the filter to see all pending claims."
+        />
       ) : null}
 
       {(query.data ?? []).length > 0 ? (
@@ -181,7 +122,7 @@ export function AdminClaimsPage() {
                 claim={claim}
                 variant="admin"
                 onDecide={(target, value) => {
-                  setActionError(null);
+                  setError(null);
                   setDecision({ open: true, claim: target, value, reason: '' });
                 }}
                 busy={busy}
@@ -192,11 +133,11 @@ export function AdminClaimsPage() {
         </>
       ) : null}
 
-      <DecisionDialog
+      <ClaimDecisionDialog
         decision={decision}
         busy={busy}
-        error={actionError}
-        onSubmit={handleDialogEvent}
+        error={error}
+        onSubmit={handleDecision}
         onClose={closeDialog}
       />
     </div>

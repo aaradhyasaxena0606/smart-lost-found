@@ -17,8 +17,10 @@ import { ClaimStatusBadge, ReportTypeBadge, formatDateTime } from './Badges.jsx'
  *   busy?: boolean
  * }} props
  */
-export function ClaimCard({ claim, variant = 'user', onWithdraw, onDecide, busy = false }) {
-  const isAdmin = variant === 'admin';
+export function ClaimCard({ claim, variant = 'user', onWithdraw, onDispute, onDecide, busy = false }) {
+  // The finder and an administrator both judge the claim, so both see the
+  // verification hint and the claimant's evidence. Ordinary claimants see neither.
+  const showsReviewContext = variant === 'admin' || variant === 'finder';
 
   return (
     <li className="claim-card">
@@ -46,14 +48,24 @@ export function ClaimCard({ claim, variant = 'user', onWithdraw, onDecide, busy 
           </p>
         </div>
 
-        {isAdmin ? (
+        {showsReviewContext ? (
           <div>
-            <h4>Private verification hint (administrators only)</h4>
-            {claim.itemVerificationHint ? (
-              <p className="claim-card__hint">{claim.itemVerificationHint}</p>
+            <h4>Your verification hint for this report</h4>
+            {claim.itemVerificationHint || claim.item?.verificationHint ? (
+              <p className="claim-card__hint">
+                {claim.itemVerificationHint || claim.item?.verificationHint}
+              </p>
             ) : (
-              <p className="claim-card__note">The report has no verification hint recorded.</p>
+              <p className="claim-card__note">No verification hint was recorded when this report was created.</p>
             )}
+
+            <h4>Claimant&apos;s private evidence</h4>
+            {claim.privateEvidence ? (
+              <p className="claim-card__hint">{claim.privateEvidence}</p>
+            ) : (
+              <p className="claim-card__note">No private evidence was supplied.</p>
+            )}
+
             <h4>Claimant</h4>
             <p>
               {claim.claimant.fullName}
@@ -94,6 +106,14 @@ export function ClaimCard({ claim, variant = 'user', onWithdraw, onDecide, busy 
         <div className="claim-card__actions">
           <button type="button" className="button button--secondary" onClick={() => onWithdraw(claim)} disabled={busy}>
             Withdraw claim
+          </button>
+        </div>
+      ) : null}
+
+      {onDispute && claim.status === 'rejected' ? (
+        <div className="claim-card__actions">
+          <button type="button" className="button button--secondary" onClick={() => onDispute(claim)} disabled={busy}>
+            Dispute this decision
           </button>
         </div>
       ) : null}

@@ -61,7 +61,7 @@ dismissing matches on someone else's report; a non-participant gets `403` on
 
 ## 3. Data exposure
 
-**Never returned by any endpoint:** `users.password_hash`, `claims.private_evidence`,
+**Never returned by any endpoint:** `users.password_hash`,
 `JWT_SECRET`, database credentials, connection strings, stack traces, SQL.
 
 **Access-restricted:** `items.verification_hint`.
@@ -73,21 +73,23 @@ The public read path goes through the `v_public_items` view, which does not join
 is a property of the query, not a filter someone has to remember. `GET /items/:itemId`
 adds the hint only for the reporter (their own report) or an administrator.
 
-### Deliberate decision: administrators see the hint, never the claim evidence
+### Deliberate decision: who can see verification data
 
-Reviewing a claim requires comparing what the claimant described against what the
-finder recorded. The finder's `verification_hint` is therefore returned **only** in
-the administrator claim queue and `GET /admin/items/:itemId`.
+Found reports are **not** publicly browsable (see `docs/design-decisions.md` DD-02),
+so a fraudster cannot read the description and reuse it in a claim.
 
-`claims.private_evidence` is returned by **no** endpoint at all, including
-administrator ones, because spec §16 lists private claim evidence among the things
-that must never be returned. Administrators see `hasPrivateEvidence: true|false` and
-rely on the claim message plus the verification hint. The UI repeats this so a
-reviewer is not left wondering where the evidence went.
+The finder's `verification_hint` and the claimant's `private_evidence` are shown
+only to the two people who must judge a claim: **the finder** (who decides routine
+claims) and **an administrator** (who decides appeals). Neither is ever part of a
+public response, and the claimant cannot read their own evidence back.
 
-Verified by tests: public item responses, listings and match responses are asserted
-not to contain the hint; the claim queue is asserted to contain the hint but not the
-evidence; audit metadata is asserted not to contain evidence.
+This is a documented departure from spec 16, which listed private claim evidence
+among the things that must never be returned. DD-01 makes the finder the
+decision-maker, and the evidence is part of the test they apply.
+
+Verified by tests: public listings and item details are asserted not to contain the
+hint or the evidence; the claimant's own claim view is asserted not to contain
+evidence; the finder and administrator views are asserted to contain it.
 
 ### Other leakage controls
 

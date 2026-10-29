@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = Object.freeze({
   CLAIM_APPROVED: 'claim.approved',
   CLAIM_REJECTED: 'claim.rejected',
   CLAIM_WITHDRAWN: 'claim.withdrawn',
+  CLAIM_DISPUTED: 'claim.disputed',
 });
 
 /**

@@ -37,9 +37,18 @@ const queueQuerySchema = z.object({
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
     .optional(),
+  escalatedOnly: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
+  escalationHours: z.coerce.number().int().positive().max(24 * 30).optional(),
   itemId: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+const disputeSchema = z.object({
+  reason: z.string().trim().min(10, 'Explain why the decision is wrong (at least 10 characters)').max(1000),
 });
 
 const decisionSchema = z
@@ -67,6 +76,54 @@ claimsRouter.get(
       req.validatedQuery ?? req.query
     );
     return sendOk(res, rows, meta);
+  })
+);
+
+/**
+ * The finder's inbox: claims against found reports they created.
+ * Declared before `/:claimId` so the literal path wins.
+ */
+claimsRouter.get(
+  '/received',
+  authenticate,
+  validate({ query: myClaimsQuerySchema }),
+  asyncHandler(async (req, res) => {
+    const { rows, meta } = await claimsService.listClaimsForFinder(
+      req.user.userId,
+      req.validatedQuery ?? req.query
+    );
+    return sendOk(res, rows, meta);
+  })
+);
+
+/**
+ * Decide a claim. The finder of the item decides routine claims; an
+ * administrator uses the same logic through /admin/claims/:claimId for appeals
+ * and escalations. Authorization lives in the service, which loads the item and
+ * compares its reporter with the caller.
+ */
+claimsRouter.patch(
+  '/:claimId',
+  authenticate,
+  validate({ params: claimIdParamSchema, body: decisionSchema }),
+  asyncHandler(async (req, res) => {
+    const claim = await claimsService.decideClaim(Number(req.params.claimId), req.body, req.user);
+    return sendOk(res, claim);
+  })
+);
+
+/** Appeal a rejection. Returns the claim to the administrator queue. */
+claimsRouter.post(
+  '/:claimId/dispute',
+  authenticate,
+  validate({ params: claimIdParamSchema, body: disputeSchema }),
+  asyncHandler(async (req, res) => {
+    const claim = await claimsService.disputeClaim(
+      Number(req.params.claimId),
+      req.user,
+      req.body.reason
+    );
+    return sendOk(res, claim);
   })
 );
 

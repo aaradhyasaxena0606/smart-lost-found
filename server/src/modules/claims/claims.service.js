@@ -27,20 +27,30 @@ export const CLAIM_DECISIONS = Object.freeze(['approved', 'rejected']);
 /** Statuses in which a found item can still receive a claim. */
 export const CLAIMABLE_ITEM_STATUSES = Object.freeze(['open', 'matched', 'claimed']);
 
-/** Maps a claim row (joined with item/user context) to the API shape. */
-export function mapClaimRow(row) {
+/**
+ * Maps a claim row (joined with item/user context) to the API shape.
+ *
+ * @param {object} row
+ * @param {{includeEvidence?: boolean}} [options] Evidence is returned only to the
+ *        people who must judge the claim: the finder making the decision and
+ *        administrators handling an appeal. It is never part of a public response.
+ */
+export function mapClaimRow(row, options = {}) {
   return {
     claimId: row.claim_id,
     status: row.status,
     claimMessage: row.claim_message,
-    // Only a boolean is ever exposed, never the evidence itself.
+    // Only a boolean is exposed by default, never the evidence itself.
     hasPrivateEvidence: row.private_evidence !== null && row.private_evidence !== undefined,
+    ...(options.includeEvidence ? { privateEvidence: row.private_evidence ?? null } : {}),
     item: {
       itemId: row.item_id,
       title: row.item_title,
       reportType: row.item_report_type,
       status: row.item_status,
       categoryName: row.item_category_name ?? null,
+      reporterId: row.item_reporter_id ?? null,
+      verificationHint: row.item_verification_hint ?? null,
     },
     claimant: {
       userId: row.claimant_id,
@@ -52,6 +62,11 @@ export function mapClaimRow(row) {
       reviewerName: row.reviewer_name ?? null,
       reviewedAt: row.reviewed_at ?? null,
       reviewReason: row.review_reason ?? null,
+      decidedByRole: row.decided_by_role ?? null,
+    },
+    dispute: {
+      disputedAt: row.disputed_at ?? null,
+      disputeReason: row.dispute_reason ?? null,
     },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -60,9 +75,13 @@ export function mapClaimRow(row) {
 
 const CLAIM_SELECT = `
   SELECT cl.claim_id, cl.item_id, cl.claimant_id, cl.claim_message, cl.private_evidence,
-         cl.status, cl.reviewed_by, cl.reviewed_at, cl.review_reason, cl.created_at, cl.updated_at,
+         cl.status, cl.reviewed_by, cl.reviewed_at, cl.review_reason,
+         cl.decided_by_role, cl.disputed_at, cl.dispute_reason,
+         cl.created_at, cl.updated_at,
          i.title AS item_title, i.report_type AS item_report_type, i.status AS item_status,
+         i.reporter_id AS item_reporter_id,
          c.name AS item_category_name,
+         d.verification_hint AS item_verification_hint,
          cu.full_name AS claimant_name, cu.email AS claimant_email,
          ru.full_name AS reviewer_name
     FROM claims cl
@@ -70,6 +89,7 @@ const CLAIM_SELECT = `
     JOIN categories c  ON c.category_id = i.category_id
     JOIN users cu      ON cu.user_id    = cl.claimant_id
     LEFT JOIN users ru ON ru.user_id    = cl.reviewed_by
+    LEFT JOIN item_private_details d ON d.item_id = cl.item_id
 `;
 
 async function loadClaim(claimId, runner) {
@@ -107,6 +127,26 @@ export async function submitClaim(itemId, input, actor) {
         allowedStatuses: CLAIMABLE_ITEM_STATUSES,
       });
     }
+
+    // A claim must be grounded in a match. Found reports are not publicly
+    // browsable, so without this check anyone who guessed an id could claim any
+    // item — hiding the listing would be cosmetic.
+    const match = await client.query(
+      `SELECT m.match_id
+         FROM matches m
+         JOIN items l ON l.item_id = m.lost_item_id
+        WHERE m.found_item_id = $1
+          AND l.reporter_id = $2
+        LIMIT 1`,
+      [itemId, actor.userId]
+    );
+    if (match.rows.length === 0) {
+      throw forbidden(
+        'You can only claim an item that has been suggested as a match for one of your own lost reports.'
+      );
+    }
+
+    const supportingMatchId = match.rows[0].match_id;
 
     // Pre-check for a friendly 409; the partial unique index is the race-safe guard.
     const existing = await client.query(
@@ -151,6 +191,7 @@ export async function submitClaim(itemId, input, actor) {
         entityId: claimId,
         metadata: {
           itemId,
+          matchId: supportingMatchId,
           hasPrivateEvidence: Boolean(input.privateEvidence),
           previousItemStatus: item.status,
         },
@@ -204,10 +245,50 @@ export async function listMyClaims(userId, filters) {
 }
 
 /**
+ * The finder's inbox: claims submitted against found reports they created.
+ *
+ * Evidence is included here because the finder is the decision-maker and judges
+ * ownership from the claim message plus the claimant's private evidence.
+ */
+export async function listClaimsForFinder(userId, filters) {
+  const { page, limit, offset } = parsePagination(filters);
+  const conditions = ['i.reporter_id = $1'];
+  const values = [userId];
+
+  if (filters.status) {
+    values.push(filters.status);
+    conditions.push(`cl.status = $${values.length}`);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  const countResult = await query(
+    `SELECT COUNT(*)::bigint AS total
+       FROM claims cl JOIN items i ON i.item_id = cl.item_id
+       ${where}`,
+    values
+  );
+
+  values.push(limit, offset);
+  const { rows } = await query(
+    `${CLAIM_SELECT} ${where}
+      ORDER BY cl.created_at DESC, cl.claim_id DESC
+      LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
+
+  return {
+    rows: rows.map((row) => mapClaimRow(row, { includeEvidence: true })),
+    meta: buildPageMeta({ page, limit, total: countResult.rows[0].total }),
+  };
+}
+
+/**
  * Administrator review queue.
  *
  * Exposes the item's private verification hint — required to judge ownership —
- * while deliberately omitting claims.private_evidence from the payload.
+ * and, for appeals, the claimant's evidence. The "escalated" filter surfaces
+ * claims that are disputed or have been waiting longer than the escalation window.
  */
 export async function listClaimQueue(filters) {
   const { page, limit, offset } = parsePagination(filters);
@@ -225,6 +306,13 @@ export async function listClaimQueue(filters) {
   if (filters.itemId) {
     values.push(filters.itemId);
     conditions.push(`cl.item_id = $${values.length}`);
+  }
+  // Escalations: disputed by the claimant, or left pending beyond the SLA.
+  if (filters.escalatedOnly) {
+    values.push(filters.escalationHours ?? 48);
+    conditions.push(
+      `(cl.disputed_at IS NOT NULL OR cl.created_at < now() - ($${values.length} || ' hours')::interval)`
+    );
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -251,7 +339,7 @@ export async function listClaimQueue(filters) {
   }
 
   const mapped = rows.map((row) => ({
-    ...mapClaimRow(row),
+    ...mapClaimRow(row, { includeEvidence: true }),
     itemVerificationHint: hintsByItem.get(row.item_id) ?? null,
   }));
 
@@ -263,12 +351,11 @@ export async function getClaimForReview(claimId) {
   const row = await loadClaim(claimId, { query });
   if (!row) return null;
 
-  const hint = await query(`SELECT verification_hint FROM item_private_details WHERE item_id = $1`, [
-    row.item_id,
-  ]);
+  // The hint now comes from CLAIM_SELECT; this keeps the single-claim shape
+  // consistent with the queue.
   return {
-    ...mapClaimRow(row),
-    itemVerificationHint: hint.rows[0]?.verification_hint ?? null,
+    ...mapClaimRow(row, { includeEvidence: true }),
+    itemVerificationHint: row.item_verification_hint ?? null,
   };
 }
 
@@ -279,7 +366,7 @@ export async function getClaimForReview(claimId) {
  * the same item and resolves the related matches — all in one transaction, so the
  * database can never show an item as returned while a competing claim is pending.
  */
-export async function decideClaim(claimId, input, admin) {
+export async function decideClaim(claimId, input, actor) {
   const { decision, reviewReason } = input;
 
   if (!CLAIM_DECISIONS.includes(decision)) {
@@ -304,7 +391,7 @@ export async function decideClaim(claimId, input, admin) {
     }
     // FR-19 / spec 16: an administrator can never decide their own claim. The
     // database enforces the same rule with claims_no_self_review_chk.
-    if (claim.claimant_id === admin.userId) {
+    if (claim.claimant_id === actor.userId) {
       throw forbidden('You cannot review your own claim.');
     }
 
@@ -315,16 +402,28 @@ export async function decideClaim(claimId, input, admin) {
     const item = itemResult.rows[0];
     if (!item) throw notFound(`Report ${claim.item_id} was not found.`);
 
+    // The finder decides routine claims (they recorded what the item looks like
+    // and must hand it over). Administrators decide appeals, escalations and
+    // suspected fraud. Anyone else is refused.
+    const isFinder = item.reporter_id === actor.userId;
+    if (!isFinder && actor.role !== 'admin') {
+      throw forbidden(
+        'Only the finder of this item, or an administrator handling an appeal, can review this claim.'
+      );
+    }
+    const decidedByRole = isFinder ? 'finder' : 'admin';
+
     await client.query(
       `UPDATE claims
-          SET status = $1, reviewed_by = $2, reviewed_at = now(), review_reason = $3
+          SET status = $1, reviewed_by = $2, reviewed_at = now(), review_reason = $3,
+              decided_by_role = $5
         WHERE claim_id = $4`,
-      [decision, admin.userId, reviewReason ?? null, claimId]
+      [decision, actor.userId, reviewReason ?? null, claimId, decidedByRole]
     );
 
     await auditService.record(
       {
-        actorUserId: admin.userId,
+        actorUserId: actor.userId,
         action:
           decision === 'approved'
             ? auditService.AUDIT_ACTIONS.CLAIM_APPROVED
@@ -355,10 +454,10 @@ export async function decideClaim(claimId, input, admin) {
       const others = await client.query(
         `UPDATE claims
             SET status = 'rejected', reviewed_by = $1, reviewed_at = now(),
-                review_reason = $2
+                review_reason = $2, decided_by_role = $5
           WHERE item_id = $3 AND claim_id <> $4 AND status = 'pending'
           RETURNING claim_id, claimant_id`,
-        [admin.userId, 'Another claim for this item was approved.', claim.item_id, claimId]
+        [actor.userId, 'Another claim for this item was approved.', claim.item_id, claimId, decidedByRole]
       );
 
       await client.query(
@@ -380,17 +479,21 @@ export async function decideClaim(claimId, input, admin) {
         client
       );
 
-      await notificationService.create(
-        {
-          userId: item.reporter_id,
-          type: notificationService.NOTIFICATION_TYPES.ITEM_RETURNED,
-          title: 'Your found report was resolved',
-          message: `A claim for "${item.title}" was approved and the item is marked as returned. Thank you for reporting it.`,
-          relatedItemId: claim.item_id,
-          relatedClaimId: claimId,
-        },
-        client
-      );
+      // Only notify the finder when somebody else made the decision; otherwise
+      // they would receive a notification about their own action.
+      if (item.reporter_id !== actor.userId) {
+        await notificationService.create(
+          {
+            userId: item.reporter_id,
+            type: notificationService.NOTIFICATION_TYPES.ITEM_RETURNED,
+            title: 'Your found report was resolved',
+            message: `A claim for "${item.title}" was approved and the item is marked as returned. Thank you for reporting it.`,
+            relatedItemId: claim.item_id,
+            relatedClaimId: claimId,
+          },
+          client
+        );
+      }
 
       for (const other of others.rows) {
         await notificationService.create(
@@ -439,6 +542,91 @@ export async function decideClaim(claimId, input, admin) {
 
     const updated = await loadClaim(claimId, client);
     return mapClaimRow(updated);
+  });
+}
+
+/**
+ * Contests a rejection (the claimant's appeal).
+ *
+ * The claim returns to `pending` with a dispute marker, so it appears in the
+ * administrator queue for a final decision. The original rejection survives in
+ * audit_logs; the review fields are cleared because the claim is unresolved again.
+ */
+export async function disputeClaim(claimId, actor, reason) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `SELECT claim_id, item_id, claimant_id, status FROM claims WHERE claim_id = $1 FOR UPDATE`,
+      [claimId]
+    );
+    if (rows.length === 0) throw notFound(`Claim ${claimId} was not found.`);
+
+    const claim = rows[0];
+    if (claim.claimant_id !== actor.userId) {
+      throw forbidden('You can only dispute your own claim.');
+    }
+    if (claim.status !== 'rejected') {
+      throw conflict(`Only a rejected claim can be disputed (current status: ${claim.status}).`);
+    }
+
+    await client.query(
+      `UPDATE claims
+          SET status = 'pending',
+              reviewed_by = NULL,
+              reviewed_at = NULL,
+              review_reason = NULL,
+              decided_by_role = NULL,
+              disputed_at = now(),
+              dispute_reason = $2
+        WHERE claim_id = $1`,
+      [claimId, reason]
+    );
+
+    // A pending claim means the item is under claim again. Without this the item
+    // would still be 'open', and a later approval would attempt the illegal
+    // transition open -> returned (the lifecycle trigger refuses it).
+    await client.query(
+      `UPDATE items SET status = 'claimed', closed_at = NULL
+        WHERE item_id = $1 AND status IN ('open', 'matched')`,
+      [claim.item_id]
+    );
+    await client.query(
+      `UPDATE matches SET match_status = 'claimed'
+        WHERE match_status = 'suggested'
+          AND (lost_item_id = $1 OR found_item_id = $1)`,
+      [claim.item_id]
+    );
+
+    await auditService.record(
+      {
+        actorUserId: actor.userId,
+        action: auditService.AUDIT_ACTIONS.CLAIM_DISPUTED,
+        entityType: 'claim',
+        entityId: claimId,
+        metadata: { itemId: claim.item_id },
+      },
+      client
+    );
+
+    const itemResult = await client.query(
+      `SELECT reporter_id, title FROM items WHERE item_id = $1`,
+      [claim.item_id]
+    );
+    const item = itemResult.rows[0];
+
+    await notificationService.create(
+      {
+        userId: item.reporter_id,
+        type: notificationService.NOTIFICATION_TYPES.CLAIM_DISPUTED,
+        title: 'A claim decision was disputed',
+        message: `The claimant has disputed your decision on "${item.title}". An administrator will review it.`,
+        relatedItemId: claim.item_id,
+        relatedClaimId: claimId,
+      },
+      client
+    );
+
+    const updated = await loadClaim(claimId, client);
+    return mapClaimRow(updated, { includeEvidence: true });
   });
 }
 

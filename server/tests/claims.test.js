@@ -49,6 +49,24 @@ async function scenario() {
     verificationHint: 'cat sticker on the back and a crack in the top-left corner',
   });
 
+  // Claims are gated on a match: every prospective claimant needs a lost report
+  // that the engine has paired with this found item. Same category, colour and
+  // brand at the same coordinates guarantees a strong candidate.
+  const lostReportPayload = (title) => ({
+    categoryId: phoneCategory,
+    reportType: 'lost',
+    title,
+    description: 'A black Apple iPhone with a cracked screen protector, lost somewhere on campus.',
+    colour: 'black',
+    brand: 'Apple',
+    latitude: 51.5007,
+    longitude: -0.1246,
+  });
+
+  await createItemViaApi(claimant.token, lostReportPayload('Lost black iPhone'));
+  await createItemViaApi(otherClaimant.token, lostReportPayload('Lost black iPhone 15'));
+  await createItemViaApi(admin.token, lostReportPayload('Lost black iPhone with crack'));
+
   return { found };
 }
 
@@ -236,7 +254,7 @@ describe('GET /claims/me and withdraw', () => {
 });
 
 describe('Administrator review', () => {
-  test('the queue shows the verification hint but never private evidence', async () => {
+  test('the queue shows the verification hint and, for appeals, the evidence', async () => {
     const { found } = await scenario();
     await api.post(`${API}/items/${found.itemId}/claims`).set(auth(claimant.token)).send(claimPayload());
 
@@ -245,7 +263,24 @@ describe('Administrator review', () => {
     assert.equal(queue.body.data.length, 1);
     assert.equal(queue.body.data[0].itemVerificationHint, 'cat sticker on the back and a crack in the top-left corner');
     assert.equal(queue.body.data[0].hasPrivateEvidence, true);
-    assert.ok(!JSON.stringify(queue.body).includes('IMEI ends 4471'));
+    // Administrators handle appeals, so they must be able to read the evidence.
+    // It is still never part of a public or claimant-facing response.
+    assert.match(queue.body.data[0].privateEvidence, /IMEI ends 4471/);
+  });
+
+  test('the claimant cannot read their own private evidence back', async () => {
+    const { found } = await scenario();
+    const created = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(claimant.token))
+      .send(claimPayload());
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.data.privateEvidence, undefined);
+
+    const mine = await api.get(`${API}/claims/me`).set(auth(claimant.token));
+    assert.equal(mine.body.data[0].privateEvidence, undefined);
+    assert.ok(!JSON.stringify(mine.body).includes('IMEI ends 4471'));
   });
 
   test('a non-administrator cannot read the queue (403)', async () => {
@@ -409,11 +444,16 @@ describe('Administrator review', () => {
     assert.equal(response.status, 403);
     assert.match(response.body.error.message, /your own claim/);
 
-    // The database constraint must also protect against a direct UPDATE.
+    // The database constraint must also protect against a direct UPDATE. Setting
+    // decided_by_role satisfies the new consistency rule so that the self-review
+    // constraint is the one that fires.
     await assert.rejects(
       () =>
         query(
-          `UPDATE claims SET status = 'approved', reviewed_by = claimant_id, reviewed_at = now() WHERE claim_id = $1`,
+          `UPDATE claims
+              SET status = 'approved', reviewed_by = claimant_id, reviewed_at = now(),
+                  decided_by_role = 'admin'
+            WHERE claim_id = $1`,
           [created.body.data.claimId]
         ),
       /claims_no_self_review_chk/
@@ -464,5 +504,116 @@ describe('Administrator review', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].actor_user_id, admin.user.userId);
     assert.equal(rows[0].role, 'admin');
+  });
+});
+
+describe('Finder-first decisions', () => {
+  test('a claimant with no matching lost report is refused (403)', async () => {
+    const { found } = await scenario();
+    const stranger = await createUserViaApi({ fullName: 'Stranger' });
+
+    const response = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(stranger.token))
+      .send(claimPayload());
+
+    assert.equal(response.status, 403);
+    assert.match(response.body.error.message, /suggested as a match/);
+  });
+
+  test('the finder can approve a claim, recorded as a finder decision', async () => {
+    const { found } = await scenario();
+    const created = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(claimant.token))
+      .send(claimPayload());
+    assert.equal(created.status, 201);
+
+    const approved = await api
+      .patch(`${API}/claims/${created.body.data.claimId}`)
+      .set(auth(finder.token))
+      .send({ decision: 'approved', reviewReason: 'Described the sticker and the crack.' });
+
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.data.status, 'approved');
+    assert.equal(approved.body.data.review.decidedByRole, 'finder');
+    assert.equal(approved.body.data.review.reviewedBy, finder.user.userId);
+
+    const item = await query('SELECT status FROM items WHERE item_id = $1', [found.itemId]);
+    assert.equal(item.rows[0].status, 'returned');
+  });
+
+  test('a bystander cannot decide a claim (403)', async () => {
+    const { found } = await scenario();
+    const created = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(claimant.token))
+      .send(claimPayload());
+
+    const response = await api
+      .patch(`${API}/claims/${created.body.data.claimId}`)
+      .set(auth(otherClaimant.token))
+      .send({ decision: 'approved' });
+
+    assert.equal(response.status, 403);
+    assert.match(response.body.error.message, /finder of this item/);
+  });
+
+  test('a rejected claimant can dispute, returning the claim to the admin queue', async () => {
+    const { found } = await scenario();
+    const created = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(claimant.token))
+      .send(claimPayload());
+    const claimId = created.body.data.claimId;
+
+    const rejected = await api
+      .patch(`${API}/claims/${claimId}`)
+      .set(auth(finder.token))
+      .send({ decision: 'rejected', reviewReason: 'Could not describe the sticker.' });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.data.status, 'rejected');
+    assert.equal(rejected.body.data.review.decidedByRole, 'finder');
+
+    const disputed = await api
+      .post(`${API}/claims/${claimId}/dispute`)
+      .set(auth(claimant.token))
+      .send({ reason: 'I did describe the sticker but used different words.' });
+    assert.equal(disputed.status, 200);
+    assert.equal(disputed.body.data.status, 'pending');
+    assert.equal(disputed.body.data.review.decidedByRole, null);
+    assert.ok(disputed.body.data.dispute.disputedAt);
+    assert.match(disputed.body.data.dispute.disputeReason, /different words/);
+
+    // The administrator sees it in the escalation queue and decides.
+    const queue = await api.get(`${API}/admin/claims?escalatedOnly=true`).set(auth(admin.token));
+    assert.equal(queue.status, 200);
+    assert.ok(queue.body.data.some((claim) => claim.claimId === claimId));
+
+    const overridden = await api
+      .patch(`${API}/admin/claims/${claimId}`)
+      .set(auth(admin.token))
+      .send({ decision: 'approved', reviewReason: 'Evidence supports the claimant.' });
+    assert.equal(overridden.status, 200);
+    assert.equal(overridden.body.data.review.decidedByRole, 'admin');
+  });
+
+  test('only the claimant can dispute a claim (403)', async () => {
+    const { found } = await scenario();
+    const created = await api
+      .post(`${API}/items/${found.itemId}/claims`)
+      .set(auth(claimant.token))
+      .send(claimPayload());
+    await api
+      .patch(`${API}/claims/${created.body.data.claimId}`)
+      .set(auth(finder.token))
+      .send({ decision: 'rejected', reviewReason: 'Nothing matched.' });
+
+    const response = await api
+      .post(`${API}/claims/${created.body.data.claimId}/dispute`)
+      .set(auth(otherClaimant.token))
+      .send({ reason: 'I want to contest someone else claim.' });
+
+    assert.equal(response.status, 403);
   });
 });

@@ -16,6 +16,8 @@ export const NOTIFICATION_TYPES = Object.freeze({
   CLAIM_APPROVED: 'claim_approved',
   CLAIM_REJECTED: 'claim_rejected',
   CLAIM_WITHDRAWN: 'claim_withdrawn',
+  CLAIM_DISPUTED: 'claim_disputed',
+  CLAIM_ESCALATED: 'claim_escalated',
   ITEM_RETURNED: 'item_returned',
   ITEM_MODERATED: 'item_moderated',
   ITEM_CLOSED: 'item_closed',

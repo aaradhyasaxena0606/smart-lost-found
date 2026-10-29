@@ -491,3 +491,15 @@ code {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* Finder-first claim review additions */
+.dialog--wide { max-width: 760px; }
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-3) 0;
+  text-align: left;
+}
+.compare h4 { margin-top: 0; }
+.filters__note { grid-column: 1 / -1; margin: 0; }

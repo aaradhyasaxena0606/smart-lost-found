@@ -1,19 +1,70 @@
-/** The signed-in user's claims, with withdrawal for pending claims. */
-import { useState } from 'react';
+/** The signed-in user's claims, with withdrawal and appeal. */
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { claimsApi } from '../api/endpoints.js';
 import { useAsyncData } from '../hooks/useAsyncData.js';
 import ClaimCard from '../components/ClaimCard.jsx';
 import Pagination from '../components/Pagination.jsx';
-import { Loading, ErrorMessage, EmptyState, ConfirmDialog } from '../components/Feedback.jsx';
+import { Loading, ErrorMessage, EmptyState, ConfirmDialog, Field } from '../components/Feedback.jsx';
 import { CLAIM_STATUS_OPTIONS } from '../components/Badges.jsx';
 
 const TABS = [{ value: '', label: 'All' }, ...CLAIM_STATUS_OPTIONS];
+
+/** Modal for contesting a rejection. */
+function DisputeDialog({ dispute, busy, error, onChange, onConfirm, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (dispute.open && !dialog.open) dialog.showModal();
+    if (!dispute.open && dialog.open) dialog.close();
+  }, [dispute.open]);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return undefined;
+    const handleCancel = (event) => {
+      event.preventDefault();
+      onClose();
+    };
+    dialog.addEventListener('cancel', handleCancel);
+    return () => dialog.removeEventListener('cancel', handleCancel);
+  }, [onClose]);
+
+  return (
+    <dialog ref={ref} className="dialog" aria-labelledby="dispute-title">
+      <h2 id="dispute-title">Dispute the decision on claim #{dispute.claim?.claimId}</h2>
+      <p>
+        An administrator will review the claim again and their decision is final. Explain why the rejection was wrong.
+      </p>
+      <ErrorMessage error={error} />
+      <Field id="dispute-reason" label="Why should this be reviewed?" required hint="At least 10 characters.">
+        <textarea
+          id="dispute-reason"
+          rows={4}
+          maxLength={1000}
+          value={dispute.reason}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </Field>
+      <div className="dialog__actions">
+        <button type="button" className="button button--secondary" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button type="button" className="button" onClick={onConfirm} disabled={busy}>
+          {busy ? 'Sending…' : 'Send to administrator'}
+        </button>
+      </div>
+    </dialog>
+  );
+}
 
 export function MyClaimsPage() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [pendingWithdraw, setPendingWithdraw] = useState(null);
+  const [dispute, setDispute] = useState({ open: false, claim: null, reason: '' });
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -37,13 +88,38 @@ export function MyClaimsPage() {
     }
   };
 
+  const closeDispute = () => {
+    setDispute({ open: false, claim: null, reason: '' });
+    setActionError(null);
+  };
+
+  const submitDispute = async () => {
+    if (!dispute.claim) return;
+    if (dispute.reason.trim().length < 10) {
+      setActionError(new Error('Please explain why the decision should be reviewed (at least 10 characters).'));
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await claimsApi.dispute(dispute.claim.claimId, dispute.reason.trim());
+      setNotice(`Claim #${dispute.claim.claimId} was sent to an administrator for review.`);
+      closeDispute();
+      query.reload();
+    } catch (caught) {
+      setActionError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page__header">
         <h1>My claims</h1>
         <p>
-          Claims you have submitted for found items. Any private evidence you supplied is stored but never returned by
-          the API.
+          Claims you have submitted for found items. The finder decides; if they reject it, you can dispute the
+          decision and an administrator will review it.
         </p>
       </header>
 
@@ -80,10 +156,10 @@ export function MyClaimsPage() {
       {!query.loading && !query.error && (query.data ?? []).length === 0 ? (
         <EmptyState
           title="No claims found"
-          description="Browse the found reports and submit a claim when you recognise your item."
+          description="When the engine suggests a found item for one of your lost reports, you can claim it from there."
           action={
-            <Link className="button" to="/items?type=found">
-              Browse found items
+            <Link className="button" to="/matches">
+              Review my matches
             </Link>
           }
         />
@@ -93,7 +169,16 @@ export function MyClaimsPage() {
         <>
           <ul className="claim-list">
             {query.data.map((claim) => (
-              <ClaimCard key={claim.claimId} claim={claim} onWithdraw={setPendingWithdraw} busy={busy} />
+              <ClaimCard
+                key={claim.claimId}
+                claim={claim}
+                onWithdraw={setPendingWithdraw}
+                onDispute={(target) => {
+                  setActionError(null);
+                  setDispute({ open: true, claim: target, reason: '' });
+                }}
+                busy={busy}
+              />
             ))}
           </ul>
           <Pagination meta={query.meta} onPageChange={setPage} />
@@ -108,6 +193,15 @@ export function MyClaimsPage() {
         busy={busy}
         onConfirm={handleWithdraw}
         onCancel={() => setPendingWithdraw(null)}
+      />
+
+      <DisputeDialog
+        dispute={dispute}
+        busy={busy}
+        error={actionError}
+        onChange={(reason) => setDispute((previous) => ({ ...previous, reason }))}
+        onConfirm={submitDispute}
+        onClose={closeDispute}
       />
     </div>
   );

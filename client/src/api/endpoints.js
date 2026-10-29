@@ -35,10 +35,13 @@ export const matchesApi = {
 export const claimsApi = {
   submit: (itemId, payload) => http.post(`/items/${itemId}/claims`, payload),
   mine: (filters) => http.get(`/claims/me${toQuery(filters)}`),
+  received: (filters) => http.get(`/claims/received${toQuery(filters)}`),
+  decide: (claimId, payload) => http.patch(`/claims/${claimId}`, payload),
+  dispute: (claimId, reason) => http.post(`/claims/${claimId}/dispute`, { reason }),
   withdraw: (claimId) => http.post(`/claims/${claimId}/withdraw`, {}),
   queue: (filters) => http.get(`/admin/claims${toQuery(filters)}`),
   get: (claimId) => http.get(`/admin/claims/${claimId}`),
-  decide: (claimId, payload) => http.patch(`/admin/claims/${claimId}`, payload),
+  decideAsAdmin: (claimId, payload) => http.patch(`/admin/claims/${claimId}`, payload),
 };
 
 export const notificationsApi = {

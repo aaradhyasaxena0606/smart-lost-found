@@ -18,6 +18,7 @@ import DashboardPage from './pages/DashboardPage.jsx';
 import MyItemsPage from './pages/MyItemsPage.jsx';
 import MatchesPage from './pages/MatchesPage.jsx';
 import MyClaimsPage from './pages/MyClaimsPage.jsx';
+import ReceivedClaimsPage from './pages/ReceivedClaimsPage.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx';
 import AdminItemsPage from './pages/AdminItemsPage.jsx';
@@ -71,6 +72,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <MatchesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/claims/received"
+            element={
+              <ProtectedRoute>
+                <ReceivedClaimsPage />
               </ProtectedRoute>
             }
           />

@@ -4,6 +4,7 @@
  * The filter values are owned by the page (and mirrored into the URL), so a
  * filtered view can be linked and reloaded.
  */
+import { Link } from 'react-router-dom';
 import { Field } from './Feedback.jsx';
 import { ITEM_STATUS_OPTIONS } from './Badges.jsx';
 
@@ -39,11 +40,14 @@ export function ItemFilters({ categories, value, onChange, onReset, busy = false
 
       <Field id="filter-type" label="Report type">
         <select id="filter-type" value={value.type ?? ''} onChange={set('type')}>
-          <option value="">Lost and found</option>
+          <option value="">Lost reports</option>
           <option value="lost">Lost only</option>
-          <option value="found">Found only</option>
         </select>
       </Field>
+      <p className="field-hint filters__note">
+        Found reports are private. They appear only in <Link to="/matches">your matches</Link> when one fits a lost
+        report you posted.
+      </p>
 
       <Field id="filter-category" label="Category">
         <select id="filter-category" value={value.categoryId ?? ''} onChange={set('categoryId')}>

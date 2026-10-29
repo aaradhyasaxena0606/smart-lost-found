@@ -312,12 +312,15 @@ describe('PATCH /items/:itemId/status', () => {
 });
 
 describe('GET /items search', () => {
+  let searchAdmin;
+
   before(async () => {
     // A clearly separated set of reports for the search assertions.
     await resetDatabase();
     categoryId = await getCategoryId('Mobile Phone');
     owner = await createUserViaApi({ fullName: 'Search Owner' });
     other = await createUserViaApi({ fullName: 'Search Other' });
+    searchAdmin = await createUserViaApi({ fullName: 'Search Admin', role: 'admin' });
 
     await createItemViaApi(owner.token, {
       categoryId,
@@ -352,29 +355,46 @@ describe('GET /items search', () => {
     });
   });
 
-  test('returns every report by default with pagination metadata', async () => {
+  test('the public listing shows lost reports only', async () => {
     const response = await api.get(`${API}/items`);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.length, 1);
+    assert.equal(response.body.data[0].reportType, 'lost');
+    assert.equal(response.body.meta.total, 1);
+    assert.equal(response.body.meta.page, 1);
+    assert.equal(response.body.meta.limit, 20);
+  });
+
+  test('an ordinary caller asking for found reports gets an empty page', async () => {
+    // Found reports are private, so the filter must not leak their existence.
+    const response = await api.get(`${API}/items?type=found`).set(auth(owner.token));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.length, 0);
+    assert.equal(response.body.meta.total, 0);
+  });
+
+  test('an administrator can list every report with pagination metadata', async () => {
+    const response = await api.get(`${API}/items`).set(auth(searchAdmin.token));
     assert.equal(response.status, 200);
     assert.equal(response.body.data.length, 3);
     assert.equal(response.body.meta.total, 3);
-    assert.equal(response.body.meta.page, 1);
-    assert.equal(response.body.meta.limit, 20);
     assert.equal(response.body.meta.totalPages, 1);
     assert.equal(response.body.meta.hasNextPage, false);
   });
 
-  test('filters by type', async () => {
-    const lost = await api.get(`${API}/items?type=lost`);
+  test('filters by type (administrator sees both)', async () => {
+    const lost = await api.get(`${API}/items?type=lost`).set(auth(searchAdmin.token));
     assert.equal(lost.body.data.length, 1);
     assert.ok(lost.body.data.every((item) => item.reportType === 'lost'));
 
-    const found = await api.get(`${API}/items?type=found`);
+    const found = await api.get(`${API}/items?type=found`).set(auth(searchAdmin.token));
     assert.equal(found.body.data.length, 2);
+    assert.ok(found.body.data.every((item) => item.reportType === 'found'));
   });
 
   test('filters by category', async () => {
     const backpack = await getCategoryId('Bag & Backpack');
-    const response = await api.get(`${API}/items?categoryId=${backpack}`);
+    const response = await api.get(`${API}/items?categoryId=${backpack}`).set(auth(searchAdmin.token));
     assert.equal(response.body.data.length, 1);
     assert.equal(response.body.data[0].category.name, 'Bag & Backpack');
   });
@@ -386,39 +406,38 @@ describe('GET /items search', () => {
   });
 
   test('searches title and description text', async () => {
-    const response = await api.get(`${API}/items?q=backpack`);
+    const response = await api.get(`${API}/items?q=backpack`).set(auth(searchAdmin.token));
     assert.equal(response.body.data.length, 1);
     assert.match(response.body.data[0].title, /backpack/i);
   });
 
   test('filters by event-time window', async () => {
     const future = new Date(Date.now() + 24 * 3600_000).toISOString();
-    const none = await api.get(`${API}/items?from=${future}`);
+    const none = await api.get(`${API}/items?from=${future}`).set(auth(searchAdmin.token));
     assert.equal(none.body.data.length, 0);
 
     const past = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
-    const all = await api.get(`${API}/items?from=${past}`);
+    const all = await api.get(`${API}/items?from=${past}`).set(auth(searchAdmin.token));
     assert.equal(all.body.data.length, 3);
   });
 
   test('sorts by event time when asked', async () => {
-    const response = await api.get(`${API}/items?sort=event_time`);
+    const response = await api.get(`${API}/items?sort=event_time`).set(auth(searchAdmin.token));
     const times = response.body.data.map((item) => new Date(item.eventTime).getTime());
     const sorted = [...times].sort((a, b) => b - a);
     assert.deepEqual(times, sorted);
   });
 
   test('paginates with a bounded limit', async () => {
-    const page1 = await api.get(`${API}/items?limit=2&page=1`);
+    const page1 = await api.get(`${API}/items?limit=2&page=1`).set(auth(searchAdmin.token));
     assert.equal(page1.body.data.length, 2);
     assert.equal(page1.body.meta.hasNextPage, true);
 
-    const page2 = await api.get(`${API}/items?limit=2&page=2`);
+    const page2 = await api.get(`${API}/items?limit=2&page=2`).set(auth(searchAdmin.token));
     assert.equal(page2.body.data.length, 1);
     assert.equal(page2.body.meta.hasNextPage, false);
     assert.equal(page2.body.meta.hasPreviousPage, true);
 
-    // No overlap between pages.
     const ids = new Set([...page1.body.data, ...page2.body.data].map((item) => item.itemId));
     assert.equal(ids.size, 3);
   });
@@ -432,7 +451,7 @@ describe('GET /items search', () => {
   });
 
   test('never includes private verification data in a listing', async () => {
-    const response = await api.get(`${API}/items`);
+    const response = await api.get(`${API}/items`).set(auth(searchAdmin.token));
     const body = JSON.stringify(response.body);
     assert.ok(!body.includes('verificationHint'));
     assert.ok(!body.includes('verification_hint'));
@@ -445,13 +464,13 @@ describe('GET /items search', () => {
       title: 'Report that will be deleted',
       description: 'A report created only to be soft deleted in this test case.',
     });
-    const before = await api.get(`${API}/items`);
+    const before = await api.get(`${API}/items`).set(auth(searchAdmin.token));
     assert.equal(before.body.meta.total, 4);
 
     const deleted = await api.delete(`${API}/items/${created.itemId}`).set(auth(owner.token));
     assert.equal(deleted.status, 204);
 
-    const after = await api.get(`${API}/items`);
+    const after = await api.get(`${API}/items`).set(auth(searchAdmin.token));
     assert.equal(after.body.meta.total, 3);
     const stillInDatabase = await query('SELECT deleted_at FROM items WHERE item_id = $1', [created.itemId]);
     assert.ok(stillInDatabase.rows[0].deleted_at, 'soft delete must keep the row');

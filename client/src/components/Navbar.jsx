@@ -72,6 +72,9 @@ export function Navbar() {
               <NavLink to="/claims" className={linkClass}>
                 My claims
               </NavLink>
+              <NavLink to="/claims/received" className={linkClass}>
+                Claims to review
+              </NavLink>
               <NavLink to="/notifications" className={linkClass}>
                 Notifications{unread > 0 ? <span className="nav__badge">{unread}</span> : null}
               </NavLink>
