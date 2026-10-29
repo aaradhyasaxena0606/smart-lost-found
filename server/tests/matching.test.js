@@ -26,7 +26,7 @@ import config from '../src/config/env.js';
 import * as matchingService from '../src/services/matching.service.js';
 import { getAiProvider, setAiProviderOverride } from '../src/integrations/ai/index.js';
 import { createOpenAiProvider, cosineSimilarity } from '../src/integrations/ai/openai.provider.js';
-import { textSimilarity, colourSimilarity, brandSimilarity, jaccardSimilarity } from '../src/utils/text.js';
+import { textSimilarity, colourSimilarity, brandSimilarity, jaccardSimilarity, stripReportTypeWords } from '../src/utils/text.js';
 
 let loser;
 let finder;
@@ -505,6 +505,17 @@ describe('Match visibility and authorization', () => {
 });
 
 describe('Text similarity helpers', () => {
+  test('report-type words are stripped before text is compared', () => {
+    assert.equal(stripReportTypeWords('Lost black iPhone near the library'), 'black iPhone near the library');
+    assert.equal(stripReportTypeWords('Found: black iPhone'), ': black iPhone');
+    // A "Lost X" vs "Found X" pair should be recognised as identical once the
+    // report-type noise is removed.
+    assert.equal(
+      textSimilarity(stripReportTypeWords('Lost black iPhone'), stripReportTypeWords('Found black iPhone')),
+      1
+    );
+  });
+
   test('identical text is 1, unrelated text is low', () => {
     assert.equal(textSimilarity('Lost black iPhone', 'Lost black iPhone'), 1);
     assert.ok(textSimilarity('Lost black iPhone', 'green umbrella') < 0.2);

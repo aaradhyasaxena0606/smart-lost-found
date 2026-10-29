@@ -11,6 +11,21 @@ const STOP_WORDS = new Set([
   'my', 'i', 'it', 'is', 'was', 'near', 'by', 'from', 'this', 'that', 'some',
 ]);
 
+/**
+ * Report-type vocabulary that carries no identifying information.
+ *
+ * A matched pair is by definition one lost and one found report, so the words
+ * "lost"/"found" are always present on one side only. Comparing them penalises
+ * every genuine match, so they are stripped before text similarity is computed.
+ */
+const REPORT_TYPE_WORDS = /\b(lost|found|missing|misplaced|report)\b/gi;
+
+/** Removes report-type noise and collapses whitespace. */
+export function stripReportTypeWords(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(REPORT_TYPE_WORDS, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** Lower-cases, removes punctuation and collapses whitespace. */
 export function normalizeText(value) {
   if (typeof value !== 'string') return '';

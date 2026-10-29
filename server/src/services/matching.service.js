@@ -50,7 +50,7 @@ import { query, withTransaction } from '../config/db.js';
 import config from '../config/env.js';
 import { getAiProvider } from '../integrations/ai/index.js';
 import { badRequest, notFound } from '../utils/httpError.js';
-import { textSimilarity, colourSimilarity, brandSimilarity } from '../utils/text.js';
+import { textSimilarity, colourSimilarity, brandSimilarity, stripReportTypeWords } from '../utils/text.js';
 import * as auditService from './audit.service.js';
 import * as notificationService from './notification.service.js';
 
@@ -112,8 +112,14 @@ export async function scorePair(lostItem, foundItem, context = {}) {
         }
   );
 
-  const titleSimilarity = textSimilarity(lostItem.title, foundItem.title);
-  const descriptionSimilarity = textSimilarity(lostItem.description, foundItem.description);
+  const titleSimilarity = textSimilarity(
+    stripReportTypeWords(lostItem.title),
+    stripReportTypeWords(foundItem.title)
+  );
+  const descriptionSimilarity = textSimilarity(
+    stripReportTypeWords(lostItem.description),
+    stripReportTypeWords(foundItem.description)
+  );
   const textScore = clamp100((titleSimilarity * 0.6 + descriptionSimilarity * 0.4) * 100);
   attributeParts.push({ key: 'text', weight: ATTRIBUTE_SUB_WEIGHTS.text, score: textScore });
   attributeWeightSum += ATTRIBUTE_SUB_WEIGHTS.text;
