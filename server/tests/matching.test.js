@@ -350,6 +350,41 @@ describe('Recalculation triggers', () => {
     assert.ok(changed, 'the stored score must change after the report changes');
   });
 
+  test('a suggestion is withdrawn when the pair moves outside the radius', async () => {
+    await resetDatabase();
+    phoneCategory = await getCategoryId('Mobile Phone');
+    loser = await createUserViaApi({ fullName: 'Radius Loser' });
+    finder = await createUserViaApi({ fullName: 'Radius Finder' });
+    admin = await createUserViaApi({ fullName: 'Radius Admin', role: 'admin' });
+
+    // ~40 m apart: a candidate must exist.
+    const { lost, found } = await createMatchingPair();
+
+    const before = await query(
+      `SELECT COUNT(*)::int AS n FROM matches WHERE lost_item_id = $1 AND found_item_id = $2`,
+      [lost.itemId, found.itemId]
+    );
+    assert.equal(before.rows[0].n, 1, 'the close pair should be suggested');
+
+    // Move the found report ~55 km away. 0.5 degrees of latitude is far beyond the
+    // default 1500 m radius, so the pair is no longer a candidate at all.
+    const moved = await api
+      .patch(`${API}/items/${found.itemId}`)
+      .set(auth(finder.token))
+      .send({ latitude: 52.0007, longitude: -0.1246 });
+    assert.equal(moved.status, 200);
+
+    const after = await query(
+      `SELECT match_status FROM matches WHERE lost_item_id = $1 AND found_item_id = $2`,
+      [lost.itemId, found.itemId]
+    );
+    assert.equal(
+      after.rows.length,
+      0,
+      'a suggestion outside the radius and time window must not linger with a stale score'
+    );
+  });
+
   test('POST /matches/recalculate refreshes the caller\'s own reports', async () => {
     await resetDatabase();
     phoneCategory = await getCategoryId('Mobile Phone');

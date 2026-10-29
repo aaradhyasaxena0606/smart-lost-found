@@ -459,6 +459,32 @@ export async function recalculateForItem(itemId, options = {}) {
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Remove suggestions whose partner is no longer a candidate at all.
+    //
+    // findCandidates() filters by the time window and, when both reports have a
+    // location, by MATCH_RADIUS_METERS. A pair that falls outside those filters is
+    // never visited by the loop above, so without this cleanup the row written by
+    // an earlier calculation would survive with a stale score — for example after
+    // coordinates are added and the pair turns out to be 18 km apart.
+    //
+    // Only 'suggested' rows are removed. A dismissed/claimed/resolved match is a
+    // human decision and is always preserved.
+    // -----------------------------------------------------------------------
+    const candidateIds = candidates.map((candidate) => candidate.item_id);
+    const stale = await client.query(
+      `DELETE FROM matches
+        WHERE match_status = 'suggested'
+          AND (
+            (lost_item_id  = $1 AND NOT (found_item_id = ANY($2::int[])))
+            OR
+            (found_item_id = $1 AND NOT (lost_item_id  = ANY($2::int[])))
+          )
+        RETURNING match_id`,
+      [itemId, candidateIds]
+    );
+    removed += stale.rowCount;
+
     await auditService.record(
       {
         actorUserId,
