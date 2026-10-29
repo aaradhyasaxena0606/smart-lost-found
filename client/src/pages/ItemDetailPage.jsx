@@ -21,6 +21,7 @@ import {
   formatDistance,
 } from '../components/Badges.jsx';
 import { Loading, ErrorMessage, EmptyState, ConfirmDialog, Field, SuccessMessage } from '../components/Feedback.jsx';
+import { ItemEditForm } from '../components/ItemEditForm.jsx';
 
 const ALLOWED_TRANSITIONS = {
   open: ['matched', 'claimed', 'closed'],
@@ -46,6 +47,14 @@ export function ItemDetailPage() {
     () => (canManage ? matchesApi.forItem(itemId, { limit: 5 }) : Promise.resolve({ data: [] })),
     [itemId, canManage]
   );
+
+  // Category list is only needed for the edit form, so it is loaded for managers.
+  const categoriesQuery = useAsyncData(
+    () => (canManage ? itemsApi.categories() : Promise.resolve({ data: [] })),
+    [canManage]
+  );
+
+  const [editing, setEditing] = useState(false);
 
   const [claimForm, setClaimForm] = useState({ claimMessage: '', privateEvidence: '' });
   const [claimOpen, setClaimOpen] = useState(false);
@@ -296,6 +305,26 @@ export function ItemDetailPage() {
             <ErrorMessage error={statusError} />
             <SuccessMessage>{statusMessage}</SuccessMessage>
             <ErrorMessage error={imageError} />
+
+            {editing ? (
+              <ItemEditForm
+                item={item}
+                categories={categoriesQuery.data ?? []}
+                onSaved={() => {
+                  setEditing(false);
+                  setStatusMessage('Report details saved and matches recalculated.');
+                  itemQuery.reload();
+                  matchesQuery.reload();
+                }}
+                onCancel={() => setEditing(false)}
+              />
+            ) : (
+              <div className="button-row">
+                <button type="button" className="button button--secondary" onClick={() => setEditing(true)} disabled={busy}>
+                  Edit report details
+                </button>
+              </div>
+            )}
 
             {transitions.length > 0 ? (
               <div className="button-row">

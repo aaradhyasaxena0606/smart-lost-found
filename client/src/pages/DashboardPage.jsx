@@ -3,6 +3,7 @@
  * candidate matches, all from real API responses.
  */
 import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAsyncData } from '../hooks/useAsyncData.js';
 import { itemsApi, claimsApi, matchesApi, notificationsApi, healthApi } from '../api/endpoints.js';
@@ -16,7 +17,14 @@ import {
 } from '../components/Badges.jsx';
 
 export function DashboardPage() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, refresh } = useAuth();
+
+  // The profile (and therefore the counter cards) was fetched once at sign-in.
+  // Refresh it on every visit so creating a report or claim is reflected here
+  // instead of showing a stale count until the next full page reload.
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const itemsQuery = useAsyncData(() => itemsApi.listMine({ limit: 5 }), []);
   const claimsQuery = useAsyncData(() => claimsApi.mine({ limit: 5 }), []);
