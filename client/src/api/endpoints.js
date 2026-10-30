@@ -13,8 +13,11 @@ export const authApi = {
 };
 
 export const itemsApi = {
-  search: (filters) => http.get(`/items${toQuery(filters)}`, { auth: false }),
-  get: (itemId) => http.get(`/items/${itemId}`, { auth: false }),
+  // The token is sent even though these endpoints are public: item visibility is
+  // viewer-dependent (found reports are private to the finder, admins and matched
+  // users), so an anonymous request would hide reports the signed-in user may read.
+  search: (filters) => http.get(`/items${toQuery(filters)}`),
+  get: (itemId) => http.get(`/items/${itemId}`),
   create: (payload) => http.post('/items', payload),
   update: (itemId, payload) => http.patch(`/items/${itemId}`, payload),
   updateStatus: (itemId, status) => http.patch(`/items/${itemId}/status`, { status }),
