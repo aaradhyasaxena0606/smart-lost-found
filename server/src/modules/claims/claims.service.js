@@ -68,6 +68,15 @@ export function mapClaimRow(row, options = {}) {
       disputedAt: row.disputed_at ?? null,
       disputeReason: row.dispute_reason ?? null,
     },
+    // The claimant's own report description, for the side-by-side comparison.
+    ...(options.includeEvidence
+      ? {
+          claimantLostReport: {
+            itemId: row.claimant_lost_item_id ?? null,
+            verificationHint: row.claimant_lost_hint ?? null,
+          },
+        }
+      : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -82,6 +91,7 @@ const CLAIM_SELECT = `
          i.reporter_id AS item_reporter_id,
          c.name AS item_category_name,
          d.verification_hint AS item_verification_hint,
+         lm.claimant_lost_item_id, lm.claimant_lost_hint,
          cu.full_name AS claimant_name, cu.email AS claimant_email,
          ru.full_name AS reviewer_name
     FROM claims cl
@@ -90,6 +100,20 @@ const CLAIM_SELECT = `
     JOIN users cu      ON cu.user_id    = cl.claimant_id
     LEFT JOIN users ru ON ru.user_id    = cl.reviewed_by
     LEFT JOIN item_private_details d ON d.item_id = cl.item_id
+    -- The claimant's own description, written when they reported the item lost.
+    -- This is the fairest point of comparison: both descriptions existed before
+    -- either party saw the other's.
+    LEFT JOIN LATERAL (
+      SELECT l.item_id AS claimant_lost_item_id,
+             dd.verification_hint AS claimant_lost_hint
+        FROM matches m
+        JOIN items l ON l.item_id = m.lost_item_id
+        LEFT JOIN item_private_details dd ON dd.item_id = l.item_id
+       WHERE m.found_item_id = cl.item_id
+         AND l.reporter_id = cl.claimant_id
+       ORDER BY m.overall_score DESC
+       LIMIT 1
+    ) lm ON TRUE
 `;
 
 async function loadClaim(claimId, runner) {
@@ -472,7 +496,11 @@ export async function decideClaim(claimId, input, actor) {
           userId: claim.claimant_id,
           type: notificationService.NOTIFICATION_TYPES.CLAIM_APPROVED,
           title: 'Your claim was approved',
-          message: `Your claim for "${item.title}" was approved. Please follow your campus lost-property collection procedure to collect the item.`,
+          message: `Your claim for "${item.title}" was approved.${
+            reviewReason
+              ? ` Collection instructions: ${reviewReason}`
+              : ' Contact the finder to arrange collection of the item.'
+          }`,
           relatedItemId: claim.item_id,
           relatedClaimId: claimId,
         },

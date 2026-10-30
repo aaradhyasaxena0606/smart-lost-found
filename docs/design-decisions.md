@@ -95,26 +95,29 @@ report-first model described in DD-02.
 
 ---
 
-## DD-04 — Claimants' private evidence is visible to the finder and administrators
+## DD-04 — Claims compare the two reports, not a second evidence box
 
-**Specification:** §16 lists "private claim evidence" among the things that must
-never be returned.
+**Specification:** describes `claims.private_evidence` as sensitive claimant evidence,
+and §16 lists private claim evidence among the things that must never be returned.
 
-**Implementation:** `private_evidence` is returned to
+**Implementation (revised):** the claim form asks only **why the item is theirs**.
+The decision screen shows two descriptions that both existed *before* either party
+saw the other's:
 
-- the **finder** deciding the claim,
-- **administrators** handling an appeal.
+- the finder's private detail on the **found** report;
+- the owner's private detail on their **lost** report.
 
-It is never returned to the claimant (they already know what they wrote), to other
-users, or in any public response.
+Asking for evidence a second time at claim time duplicated the owner's own report and
+encouraged copying. The comparison is now symmetric and tamper-resistant.
 
-**Rationale:** if the finder is the decision-maker, withholding the evidence makes
-the decision impossible. The specification's rule assumed an administrator would
-judge using the finder's hint; with DD-01 the evidence is part of the test. The
-disclosure is limited to the two people who must judge.
+The legacy `claims.private_evidence` column is retained (existing rows, API
+compatibility) but the UI no longer collects it.
 
-**Consequence:** a literal reading of §16 is not satisfied. The API never exposes
-evidence publicly, and every access is via an authenticated, authorized endpoint.
+**Rationale:** identical information, requested once, in the place where it was
+written before the found item was visible.
+
+**Consequence:** a decision is weaker if the owner never recorded a private detail on
+their lost report; the UI says so explicitly in the comparison.
 
 ---
 

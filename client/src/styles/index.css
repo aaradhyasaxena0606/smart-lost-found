@@ -503,3 +503,4 @@ code {
 }
 .compare h4 { margin-top: 0; }
 .filters__note { grid-column: 1 / -1; margin: 0; }
+.compare--single { grid-template-columns: 1fr; }

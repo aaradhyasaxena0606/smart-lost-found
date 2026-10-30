@@ -39,33 +39,35 @@ export function ClaimDecisionDialog({ decision, busy, error, onSubmit, onClose }
       </h2>
       <p>{decision.claim?.item?.title}</p>
 
-      {/* The two things the decision rests on, side by side. */}
+      {/* The two descriptions existed before either party saw the other's. */}
       <div className="compare">
         <div>
-          <h4>What the finder recorded</h4>
+          <h4>The finder recorded</h4>
           <p className="claim-card__hint">
             {decision.claim?.itemVerificationHint ||
               decision.claim?.item?.verificationHint ||
-              'No verification detail was recorded for this report.'}
+              'No verification detail was recorded on the found report.'}
           </p>
         </div>
         <div>
-          <h4>What the claimant said</h4>
+          <h4>The owner wrote on their lost report</h4>
+          <p className="claim-card__hint">
+            {decision.claim?.claimantLostReport?.verificationHint ||
+              'No verification detail was recorded on their lost report.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="compare compare--single">
+        <div>
+          <h4>Why they say it is theirs</h4>
           <p className="claim-card__message">{decision.claim?.claimMessage}</p>
-          {decision.claim?.privateEvidence ? (
-            <>
-              <h4>Private evidence</h4>
-              <p className="claim-card__hint">{decision.claim.privateEvidence}</p>
-            </>
-          ) : (
-            <p className="claim-card__note">No private evidence supplied.</p>
-          )}
         </div>
       </div>
 
       <p>
         {isApprove
-          ? 'Approving marks the item returned and rejects any competing claims.'
+          ? 'Approving marks the item returned and rejects any competing claims. Tell the claimant where and when to collect it.'
           : 'A reason is required. The claimant can dispute your decision, and an administrator will then decide.'}
       </p>
 
@@ -73,9 +75,13 @@ export function ClaimDecisionDialog({ decision, busy, error, onSubmit, onClose }
 
       <Field
         id="review-reason"
-        label="Reason"
+        label={isApprove ? 'Collection instructions (optional)' : 'Reason for rejection'}
         required={!isApprove}
-        hint="Recorded in the audit log and shown to the claimant."
+        hint={
+          isApprove
+            ? 'Where, when and how the claimant should collect the item. Included in their approval notification.'
+            : 'Recorded in the audit log and shown to the claimant.'
+        }
       >
         <textarea
           id="review-reason"

@@ -115,7 +115,7 @@ export function ItemDetailPage() {
     try {
       const { data } = await claimsApi.submit(itemId, {
         claimMessage: claimForm.claimMessage,
-        privateEvidence: claimForm.privateEvidence || null,
+        privateEvidence: null,
       });
       setClaimSubmitted(data);
       setClaimOpen(false);
@@ -411,7 +411,7 @@ export function ItemDetailPage() {
                     id="claim-message"
                     label="Why is this yours?"
                     required
-                    hint="Describe details from memory rather than copying the description. Administrators compare this with the finder's private verification detail."
+                    hint="Describe details from memory. The finder compares this with what they recorded — and with the private detail on your own lost report — before handing the item over."
                     error={claimError?.fieldErrors?.claimMessage}
                   >
                     <textarea
@@ -422,20 +422,6 @@ export function ItemDetailPage() {
                       rows={5}
                       value={claimForm.claimMessage}
                       onChange={(event) => setClaimForm({ ...claimForm, claimMessage: event.target.value })}
-                    />
-                  </Field>
-                  <Field
-                    id="claim-evidence"
-                    label="Private evidence (optional)"
-                    hint="For privacy this is stored but never returned by the API. Provide a serial number, an IMEI or a short description of proof."
-                    error={claimError?.fieldErrors?.privateEvidence}
-                  >
-                    <textarea
-                      id="claim-evidence"
-                      rows={3}
-                      maxLength={2000}
-                      value={claimForm.privateEvidence}
-                      onChange={(event) => setClaimForm({ ...claimForm, privateEvidence: event.target.value })}
                     />
                   </Field>
                   <div className="button-row">

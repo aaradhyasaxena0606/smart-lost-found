@@ -59,11 +59,11 @@ export function ClaimCard({ claim, variant = 'user', onWithdraw, onDispute, onDe
               <p className="claim-card__note">No verification hint was recorded when this report was created.</p>
             )}
 
-            <h4>Claimant&apos;s private evidence</h4>
-            {claim.privateEvidence ? (
-              <p className="claim-card__hint">{claim.privateEvidence}</p>
+            <h4>The owner wrote on their lost report</h4>
+            {claim.claimantLostReport?.verificationHint ? (
+              <p className="claim-card__hint">{claim.claimantLostReport.verificationHint}</p>
             ) : (
-              <p className="claim-card__note">No private evidence was supplied.</p>
+              <p className="claim-card__note">No verification detail was recorded on their lost report.</p>
             )}
 
             <h4>Claimant</h4>
