@@ -11,7 +11,9 @@ import { MATCH_STATUS_OPTIONS } from '../components/Badges.jsx';
 const STATUS_TABS = [{ value: '', label: 'All statuses' }, ...MATCH_STATUS_OPTIONS];
 
 export function MatchesPage() {
-  const [status, setStatus] = useState('suggested');
+  // Default to "All statuses": a match disappears from "Suggested" the moment it is
+  // claimed or resolved, so opening on that tab made a completed flow look empty.
+  const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [pendingDismiss, setPendingDismiss] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -104,7 +106,11 @@ export function MatchesPage() {
       {!query.loading && !query.error && (query.data ?? []).length === 0 ? (
         <EmptyState
           title="No matches to show"
-          description="Report a lost or found item and we will look for compatible reports of the opposite type."
+          description={
+            status
+              ? 'Nothing with this status. A match moves from Suggested to Claimed when someone claims the item, and to Resolved once a decision is made — try another tab or "All statuses".'
+              : 'Report a lost or found item and we will look for compatible reports of the opposite type.'
+          }
           action={
             <div className="button-row">
               <Link className="button" to="/report/lost">

@@ -7,16 +7,18 @@
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { notificationsApi } from '../api/endpoints.js';
+import { notificationsApi, claimsApi } from '../api/endpoints.js';
 
 export function Navbar() {
   const { isAuthenticated, isAdmin, user, logout } = useAuth();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
+  const [pendingReviews, setPendingReviews] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) {
       setUnread(0);
+      setPendingReviews(0);
       return undefined;
     }
     let cancelled = false;
@@ -26,6 +28,14 @@ export function Navbar() {
         if (!cancelled) setUnread(data.unreadCount);
       } catch {
         /* a badge failure must never break navigation */
+      }
+      try {
+        // Claims against found reports this user owns. Surfacing the count is the
+        // only reliable way to lead a finder to the decision screen.
+        const received = await claimsApi.received({ status: 'pending', limit: 1 });
+        if (!cancelled) setPendingReviews(received.meta?.total ?? 0);
+      } catch {
+        /* the endpoint may not apply to this account; ignore */
       }
     };
     load();
@@ -74,6 +84,7 @@ export function Navbar() {
               </NavLink>
               <NavLink to="/claims/received" className={linkClass}>
                 Claims to review
+                {pendingReviews > 0 ? <span className="nav__badge">{pendingReviews}</span> : null}
               </NavLink>
               <NavLink to="/notifications" className={linkClass}>
                 Notifications{unread > 0 ? <span className="nav__badge">{unread}</span> : null}
