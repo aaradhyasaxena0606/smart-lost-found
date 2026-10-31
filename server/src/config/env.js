@@ -167,8 +167,11 @@ export const config = Object.freeze({
 
   rateLimit: Object.freeze({
     windowMs: raw.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
-    authMax: raw.RATE_LIMIT_AUTH_MAX ?? (isProduction ? 10 : 1000),
-    apiMax: raw.RATE_LIMIT_API_MAX ?? (isProduction ? 300 : 10_000),
+    // 10/15min is too strict for a campus network: every student behind the same
+    // NAT shares one public IP, so a handful of logins would lock out the site.
+    // 50 keeps credential stuffing impractical while allowing normal shared use.
+    authMax: raw.RATE_LIMIT_AUTH_MAX ?? (isProduction ? 50 : 1000),
+    apiMax: raw.RATE_LIMIT_API_MAX ?? (isProduction ? 600 : 10_000),
   }),
 });
 
