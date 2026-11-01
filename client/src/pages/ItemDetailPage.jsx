@@ -390,20 +390,50 @@ export function ItemDetailPage() {
         {isAuthenticated && !isOwner && item.reportType === 'found' ? (
           <section className="item-detail__claim">
             <h2>Think this is yours?</h2>
+
             {claimSubmitted ? (
               <SuccessMessage>
-                Your claim (reference #{claimSubmitted.claimId}) was submitted and is awaiting administrator review.
-                You can follow it under <Link to="/claims">My claims</Link>.
+                Your claim (reference #{claimSubmitted.claimId}) was submitted and is awaiting the finder&apos;s
+                decision. You can follow it under <Link to="/claims">My claims</Link>.
               </SuccessMessage>
             ) : null}
 
-            {!claimable && !claimSubmitted ? (
+            {!claimSubmitted && item.viewerClaim ? (
+              <div className={`state ${item.viewerClaim.status === 'approved' ? 'state--success' : item.viewerClaim.status === 'rejected' ? 'state--error' : 'state--empty'}`}>
+                {item.viewerClaim.status === 'pending' ? (
+                  <>
+                    <strong>You already have a claim on this item.</strong>
+                    <p>It is awaiting the finder&apos;s decision. You will be notified when they decide.</p>
+                  </>
+                ) : item.viewerClaim.status === 'approved' ? (
+                  <>
+                    <strong>Your claim was approved.</strong>
+                    <p>Check your notifications for the collection instructions.</p>
+                  </>
+                ) : item.viewerClaim.status === 'rejected' ? (
+                  <>
+                    <strong>Your claim was rejected.</strong>
+                    <p>If you believe the decision is wrong, you can dispute it from My claims.</p>
+                  </>
+                ) : (
+                  <>
+                    <strong>Your claim was withdrawn.</strong>
+                    <p>You can submit a new claim while the item is still available.</p>
+                  </>
+                )}
+                <Link className="button button--secondary" to="/claims">
+                  Open My claims
+                </Link>
+              </div>
+            ) : null}
+
+            {!claimSubmitted && !item.viewerClaim && !claimable ? (
               <p className="claim-card__note">
                 This report cannot receive new claims while its status is “{item.status}”.
               </p>
             ) : null}
 
-            {claimable && !claimSubmitted ? (
+            {claimable && !claimSubmitted && !item.viewerClaim ? (
               claimOpen ? (
                 <form className="form" onSubmit={handleClaimSubmit} noValidate>
                   <ErrorMessage error={claimError} />

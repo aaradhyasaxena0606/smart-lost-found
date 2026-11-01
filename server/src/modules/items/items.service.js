@@ -213,6 +213,22 @@ export async function getItemById(itemId, viewer = {}, includeDeleted = false, c
     if (matched.rows.length === 0) return null;
   }
 
+  // The viewer's own claim on this item, if any. Without it the page told a
+  // claimant "this report cannot receive new claims", which reads like an error
+  // rather than "your claim is already pending".
+  if (viewer.userId) {
+    const ownClaim = await runner.query(
+      `SELECT claim_id, status FROM claims
+        WHERE item_id = $1 AND claimant_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [itemId, viewer.userId]
+    );
+    item.viewerClaim = ownClaim.rows.length
+      ? { claimId: ownClaim.rows[0].claim_id, status: ownClaim.rows[0].status }
+      : null;
+  }
+
   // Private verification data is returned ONLY to the reporter (to edit their own
   // report) or to an administrator. It is never part of a public response.
   if (isOwner || isAdmin) {
