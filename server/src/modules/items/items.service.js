@@ -121,6 +121,13 @@ export async function searchItems(filters, viewer = {}) {
 
   const reportType = isAdmin ? requestedType : 'lost';
 
+  // Public browse shows the *active* lifecycle only. A closed, returned or
+  // rejected report is history: it stays reachable through an explicit status
+  // filter (and in the owner's "My reports"), but it must not clutter the
+  // catalogue after the reporter closes it.
+  const ACTIVE_STATUSES = ['open', 'matched', 'claimed'];
+  const statuses = filters.status ? [filters.status] : isAdmin ? null : ACTIVE_STATUSES;
+
   const coordinateError = validateCoordinatePair(filters.latitude, filters.longitude);
   if (coordinateError) throw badRequest(coordinateError);
 
@@ -132,7 +139,7 @@ export async function searchItems(filters, viewer = {}) {
     `SELECT * FROM fn_search_items(
         p_report_type   => $1,
         p_category_id   => $2,
-        p_status        => $3,
+        p_statuses      => $3::varchar[],
         p_colour        => $4,
         p_brand         => $5,
         p_query         => $6,
@@ -149,7 +156,7 @@ export async function searchItems(filters, viewer = {}) {
     [
       reportType,
       filters.categoryId ?? null,
-      filters.status ?? null,
+      statuses,
       filters.colour ?? null,
       filters.brand ?? null,
       filters.q ?? null,

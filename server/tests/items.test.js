@@ -476,6 +476,36 @@ describe('GET /items search', () => {
     assert.ok(stillInDatabase.rows[0].deleted_at, 'soft delete must keep the row');
   });
 
+  test('a closed report leaves the public catalogue but stays reachable', async () => {
+    const created = await createItemViaApi(owner.token, {
+      categoryId,
+      title: 'Lost blue notebook that will be closed',
+      description: 'A blue notebook created to verify that closing removes it from browse.',
+    });
+
+    const before = await api.get(`${API}/items?limit=100`);
+    assert.ok(before.body.data.some((item) => item.itemId === created.itemId));
+
+    const closed = await api
+      .patch(`${API}/items/${created.itemId}/status`)
+      .set(auth(owner.token))
+      .send({ status: 'closed' });
+    assert.equal(closed.status, 200);
+
+    const after = await api.get(`${API}/items?limit=100`);
+    assert.ok(
+      !after.body.data.some((item) => item.itemId === created.itemId),
+      'a closed report must not appear in public browse'
+    );
+
+    // History stays reachable through an explicit filter and for the owner.
+    const explicit = await api.get(`${API}/items?status=closed&limit=100`);
+    assert.ok(explicit.body.data.some((item) => item.itemId === created.itemId));
+
+    const mine = await api.get(`${API}/users/me/items?limit=100`).set(auth(owner.token));
+    assert.ok(mine.body.data.some((item) => item.itemId === created.itemId));
+  });
+
   test('forbids deleting another user\'s report (403)', async () => {
     const created = await createItemViaApi(owner.token, { categoryId });
     const response = await api.delete(`${API}/items/${created.itemId}`).set(auth(other.token));
