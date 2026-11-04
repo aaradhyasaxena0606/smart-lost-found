@@ -1,0 +1,175 @@
+// ============================================================================
+// Smart Lost & Found — ER diagram source for dbdiagram.io (DBML)
+//
+// Paste this whole file into https://dbdiagram.io — it renders a crow's-foot
+// ER diagram you can export as PNG/PDF for submission.
+//
+// This mirrors database/migrations 001..015. If a migration changes the schema,
+// update this file in the same commit.
+//
+// Deliberately excluded: schema_migrations (tooling) and spatial_ref_sys
+// (owned by PostGIS).
+// ============================================================================
+
+Table users {
+  user_id       integer      [pk, increment, note: 'Surrogate primary key']
+  full_name     varchar(120) [not null]
+  email         varchar(254) [not null, unique, note: 'lower-cased; uniqueness on the normalized value']
+  password_hash varchar(255) [not null, note: 'bcrypt hash — never returned by any API response']
+  role          varchar(16)  [not null, default: 'user', note: 'CHECK (role IN (user, admin))']
+  is_active     boolean      [not null, default: true]
+  created_at    timestamptz  [not null, default: `now()`]
+  updated_at    timestamptz  [not null, default: `now()`]
+
+  Note: 'Students and administrators share one table, distinguished by role.'
+}
+
+Table categories {
+  category_id integer     [pk, increment]
+  name        varchar(80) [not null, unique]
+  description varchar(255)
+  created_at  timestamptz [not null, default: `now()`]
+  updated_at  timestamptz [not null, default: `now()`]
+}
+
+Table items {
+  item_id       integer     [pk, increment]
+  reporter_id   integer     [not null, note: 'FK -> users(user_id), ON DELETE RESTRICT']
+  category_id   integer     [not null, note: 'FK -> categories(category_id), ON DELETE RESTRICT']
+  report_type   varchar(8)  [not null, note: "CHECK (report_type IN ('lost','found'))"]
+  title         varchar(200) [not null, note: '3-200 characters']
+  description   text        [not null, note: '10-5000 characters']
+  colour        varchar(50)
+  brand         varchar(100)
+  event_time    timestamptz [not null, note: 'When the item was lost or found']
+  location_name varchar(200)
+  location      geography   [note: 'geography(Point,4326); X=longitude, Y=latitude; GiST indexed']
+  status        varchar(16) [not null, default: 'open', note: 'CHECK (open, matched, claimed, returned, closed, rejected)']
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+  closed_at     timestamptz
+  deleted_at    timestamptz [note: 'Soft delete: excluded from all public queries']
+
+  Note: 'Lost and found reports share one table (single-table inheritance on report_type).'
+}
+
+Table item_images {
+  image_id    integer     [pk, increment]
+  item_id     integer     [not null, note: 'FK -> items, ON DELETE CASCADE']
+  storage_key varchar(120) [not null, unique, note: 'Server-generated filename only']
+  mime_type   varchar(64) [not null, note: 'CHECK (image/jpeg, image/png, image/webp)']
+  byte_size   integer     [not null, note: '1 byte .. 10 MB']
+  alt_text    varchar(200)
+  uploaded_at timestamptz [not null, default: `now()`]
+}
+
+Table item_private_details {
+  private_detail_id integer     [pk, increment]
+  item_id           integer     [not null, unique, note: 'UNIQUE => 1:0..1 with items; FK ON DELETE CASCADE']
+  verification_hint varchar(500) [note: 'Access-restricted; never in public responses']
+  created_at        timestamptz [not null, default: `now()`]
+  updated_at        timestamptz [not null, default: `now()`]
+
+  Note: 'Separated from items so public queries cannot leak it structurally.'
+}
+
+Table matches {
+  match_id        integer     [pk, increment]
+  lost_item_id    integer     [not null, note: 'FK -> items; trigger enforces report_type = lost']
+  found_item_id   integer     [not null, note: 'FK -> items; trigger enforces report_type = found']
+  attribute_score numeric(5,2) [not null, note: '0-100']
+  time_score      numeric(5,2) [not null, note: '0-100']
+  spatial_score   numeric(5,2) [note: '0-100, NULL when a location is missing']
+  ai_score        numeric(5,2) [note: '0-100, NULL when no AI provider']
+  overall_score   numeric(5,2) [not null, note: 'Weighted mean over available components']
+  match_status    varchar(16) [not null, default: 'suggested', note: 'CHECK (suggested, dismissed, claimed, resolved)']
+  match_reasons   jsonb       [not null, default: '[]', note: 'Explainable, non-sensitive reasons']
+  created_at      timestamptz [not null, default: `now()`]
+  updated_at      timestamptz [not null, default: `now()`]
+
+  indexes {
+    (lost_item_id, found_item_id) [unique, name: 'matches_pair_key']
+  }
+
+  Note: 'Associative entity resolving the many-to-many self-relationship between reports.'
+}
+
+Table claims {
+  claim_id        integer      [pk, increment]
+  item_id         integer      [not null, note: 'FK -> items (found item), ON DELETE RESTRICT']
+  claimant_id     integer      [not null, note: 'FK -> users, ON DELETE RESTRICT']
+  claim_message   text         [not null, note: '10-2000 characters']
+  private_evidence varchar(2000) [note: 'Legacy column; the UI no longer collects it']
+  status          varchar(16)  [not null, default: 'pending', note: 'CHECK (pending, approved, rejected, withdrawn)']
+  reviewed_by     integer      [note: 'FK -> users, ON DELETE SET NULL; CHECK (reviewed_by <> claimant_id)']
+  reviewed_at     timestamptz
+  review_reason   varchar(1000) [note: 'Required on rejection; collection instructions on approval']
+  decided_by_role varchar(8)   [note: "CHECK (finder, admin) — who decided"]
+  disputed_at     timestamptz  [note: 'Set when the claimant appeals a rejection']
+  dispute_reason  varchar(1000)
+  created_at      timestamptz  [not null, default: `now()`]
+  updated_at      timestamptz  [not null, default: `now()`]
+
+  Note: 'One active claim per (item, claimant) enforced by a partial unique index.'
+}
+
+Table notifications {
+  notification_id   integer      [pk, increment]
+  user_id           integer      [not null, note: 'FK -> users, ON DELETE CASCADE']
+  notification_type varchar(40)  [not null, note: 'CHECK: 10 workflow event types']
+  title             varchar(200) [not null]
+  message           varchar(1000) [not null]
+  related_item_id   integer      [note: 'FK -> items, ON DELETE CASCADE']
+  related_claim_id  integer      [note: 'FK -> claims, ON DELETE CASCADE']
+  is_read           boolean      [not null, default: false]
+  created_at        timestamptz  [not null, default: `now()`]
+}
+
+Table audit_logs {
+  audit_id      bigint      [pk, increment]
+  actor_user_id integer     [note: 'FK -> users, ON DELETE SET NULL; NULL for system/CLI actions']
+  action        varchar(60) [not null, note: 'e.g. claim.approved, item.moderated']
+  entity_type   varchar(40) [not null, note: 'Polymorphic: item | claim | match | user']
+  entity_id     integer     [note: 'No FK: must survive deletion of the target']
+  metadata      jsonb       [not null, default: '{}', note: 'Allow-listed, non-secret fields']
+  created_at    timestamptz [not null, default: `now()`]
+
+  Note: 'Append-only audit trail. Polymorphic reference is intentional; a FK would destroy history.'
+}
+
+// ---------------------------------------------------------------------------
+// Relationships (crow's foot)
+// ---------------------------------------------------------------------------
+
+// One user reports many items.
+Ref: users.user_id < items.reporter_id
+
+// One category classifies many items.
+Ref: categories.category_id < items.category_id
+
+// One item has many images.
+Ref: items.item_id < item_images.item_id
+
+// One item has at most one private-details record (1:0..1).
+Ref: items.item_id - item_private_details.item_id
+
+// A match pairs one lost report with one found report (two 1:N sides of an M:N).
+Ref: items.item_id < matches.lost_item_id
+Ref: items.item_id < matches.found_item_id
+
+// One found item can receive many claims; one user can submit many claims.
+Ref: items.item_id < claims.item_id
+Ref: users.user_id < claims.claimant_id
+
+// One administrator reviews many claims.
+Ref: users.user_id < claims.reviewed_by
+
+// One user receives many notifications.
+Ref: users.user_id < notifications.user_id
+
+// Notifications may reference an item and/or a claim.
+Ref: items.item_id < notifications.related_item_id
+Ref: claims.claim_id < notifications.related_claim_id
+
+// One user generates many audit entries.
+Ref: users.user_id < audit_logs.actor_user_id
