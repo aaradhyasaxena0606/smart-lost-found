@@ -16,7 +16,9 @@ export function Navbar() {
   const [pendingReviews, setPendingReviews] = useState(0);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Administrators do not receive workflow notifications and own no reports, so
+    // polling for badges would be pointless requests.
+    if (!isAuthenticated || isAdmin) {
       setUnread(0);
       setPendingReviews(0);
       return undefined;
@@ -44,7 +46,7 @@ export function Navbar() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isAdmin]);
 
   const handleLogout = () => {
     logout();
@@ -61,42 +63,47 @@ export function Navbar() {
         </Link>
 
         <nav aria-label="Main navigation" className="nav__links">
-          <NavLink to="/items" className={linkClass}>
-            Browse reports
-          </NavLink>
-          <NavLink to="/report/lost" className={linkClass}>
-            Report lost
-          </NavLink>
-          <NavLink to="/report/found" className={linkClass}>
-            Report found
-          </NavLink>
-
-          {isAuthenticated ? (
-            <>
-              <NavLink to="/dashboard" className={linkClass}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/matches" className={linkClass}>
-                Matches
-              </NavLink>
-              <NavLink to="/claims" className={linkClass}>
-                My claims
-              </NavLink>
-              <NavLink to="/claims/received" className={linkClass}>
-                Claims to review
-                {pendingReviews > 0 ? <span className="nav__badge">{pendingReviews}</span> : null}
-              </NavLink>
-              <NavLink to="/notifications" className={linkClass}>
-                Notifications{unread > 0 ? <span className="nav__badge">{unread}</span> : null}
-              </NavLink>
-            </>
-          ) : null}
-
           {isAdmin ? (
+            // Administrators get one entry: the dashboard is the hub for claim
+            // appeals, report moderation, the audit log and accounts. Student
+            // routes stay reachable by URL but are not offered here.
             <NavLink to="/admin" className={linkClass}>
               Admin
             </NavLink>
-          ) : null}
+          ) : (
+            <>
+              <NavLink to="/items" className={linkClass}>
+                Browse reports
+              </NavLink>
+              <NavLink to="/report/lost" className={linkClass}>
+                Report lost
+              </NavLink>
+              <NavLink to="/report/found" className={linkClass}>
+                Report found
+              </NavLink>
+
+              {isAuthenticated ? (
+                <>
+                  <NavLink to="/dashboard" className={linkClass}>
+                    Dashboard
+                  </NavLink>
+                  <NavLink to="/matches" className={linkClass}>
+                    Matches
+                  </NavLink>
+                  <NavLink to="/claims" className={linkClass}>
+                    My claims
+                  </NavLink>
+                  <NavLink to="/claims/received" className={linkClass}>
+                    Claims to review
+                    {pendingReviews > 0 ? <span className="nav__badge">{pendingReviews}</span> : null}
+                  </NavLink>
+                  <NavLink to="/notifications" className={linkClass}>
+                    Notifications{unread > 0 ? <span className="nav__badge">{unread}</span> : null}
+                  </NavLink>
+                </>
+              ) : null}
+            </>
+          )}
         </nav>
 
         <div className="nav__account">
