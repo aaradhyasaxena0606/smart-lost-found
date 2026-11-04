@@ -29,6 +29,7 @@
     "db:seed:reference": "node server/src/scripts/seed.js --reference-only",
     "db:setup": "npm run db:create && npm run db:migrate && npm run db:seed",
     "db:reset": "node database/scripts/migrate.js --reset && npm run db:seed",
+    "db:reset-demo": "node database/scripts/reset-demo.js",
     "db:status": "node database/scripts/migrate.js --status",
     "db:explain": "node database/scripts/explain.js",
     "api:smoke": "node database/scripts/smoke-api.js",
