@@ -60,6 +60,7 @@ export const adminApi = {
   moderate: (itemId, payload) => http.patch(`/admin/items/${itemId}/moderation`, payload),
   auditLogs: (filters) => http.get(`/admin/audit-logs${toQuery(filters)}`),
   stats: () => http.get('/admin/stats'),
+  reportsByDay: (filters) => http.get(`/admin/reports-by-day${toQuery(filters)}`),
   users: (filters) => http.get(`/admin/users${toQuery(filters)}`),
 };
 

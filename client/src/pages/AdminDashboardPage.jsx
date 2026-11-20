@@ -1,8 +1,16 @@
 /** Administrator overview with database-backed counters (no fabricated numbers). */
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { adminApi } from '../api/endpoints.js';
 import { useAsyncData } from '../hooks/useAsyncData.js';
-import { Loading, ErrorMessage } from '../components/Feedback.jsx';
+import { Loading, ErrorMessage, Field } from '../components/Feedback.jsx';
+
+/** Today's date in the browser's timezone, as YYYY-MM-DD. */
+function todayLocal() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 
 function Stat({ label, value, hint }) {
   return (
@@ -17,6 +25,11 @@ function Stat({ label, value, hint }) {
 export function AdminDashboardPage() {
   const statsQuery = useAsyncData(() => adminApi.stats(), []);
   const queueQuery = useAsyncData(() => adminApi.auditLogs({ limit: 5 }), []);
+  const [dayFilter, setDayFilter] = useState({ date: todayLocal(), type: 'all' });
+  const dayQuery = useAsyncData(
+    () => adminApi.reportsByDay({ date: dayFilter.date, type: dayFilter.type }),
+    [dayFilter.date, dayFilter.type]
+  );
 
   if (statsQuery.loading) return <Loading label="Loading administrator statistics…" />;
   if (statsQuery.error) return <ErrorMessage error={statsQuery.error} onRetry={statsQuery.reload} />;
@@ -57,6 +70,52 @@ export function AdminDashboardPage() {
           Accounts
         </Link>
       </div>
+
+      <section className="card">
+        <header className="card__header">
+          <h2>Reports marked on a day</h2>
+        </header>
+        <p className="field-hint">
+          Counts reports by the date they were submitted, in the reporting timezone
+          {dayQuery.data?.timezone ? ` (${dayQuery.data.timezone})` : ''}.
+        </p>
+
+        <form className="filters" onSubmit={(event) => event.preventDefault()} aria-label="Filter reports by day">
+          <Field id="day-date" label="Date">
+            <input
+              id="day-date"
+              type="date"
+              value={dayFilter.date}
+              onChange={(event) => setDayFilter({ ...dayFilter, date: event.target.value })}
+            />
+          </Field>
+          <Field id="day-type" label="Report type">
+            <select
+              id="day-type"
+              value={dayFilter.type}
+              onChange={(event) => setDayFilter({ ...dayFilter, type: event.target.value })}
+            >
+              <option value="all">All reports</option>
+              <option value="lost">Lost</option>
+              <option value="found">Found</option>
+            </select>
+          </Field>
+        </form>
+
+        {dayQuery.loading ? <Loading label="Counting…" /> : null}
+        <ErrorMessage error={dayQuery.error} onRetry={dayQuery.reload} />
+        {dayQuery.data ? (
+          <div className="stat-grid">
+            <Stat
+              label={dayFilter.type === 'all' ? 'Total reports' : dayFilter.type === 'lost' ? 'Lost reports' : 'Found reports'}
+              value={dayQuery.data.total}
+              hint={dayQuery.data.date}
+            />
+            <Stat label="Lost that day" value={dayQuery.data.lost} />
+            <Stat label="Found that day" value={dayQuery.data.found} />
+          </div>
+        ) : null}
+      </section>
 
       <section className="card">
         <header className="card__header">

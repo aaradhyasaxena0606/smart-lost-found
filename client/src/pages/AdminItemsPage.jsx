@@ -96,7 +96,7 @@ function ModerationDialog({ moderation, busy, error, onChange, onConfirm, onClos
 }
 
 export function AdminItemsPage() {
-  const [filters, setFilters] = useState({ type: '', status: '', includeDeleted: false });
+  const [filters, setFilters] = useState({ type: '', status: '', date: '', includeDeleted: false });
   const [page, setPage] = useState(1);
   const [moderation, setModeration] = useState({ open: false, item: null, action: 'reject', reason: '' });
   const [busy, setBusy] = useState(false);
@@ -110,9 +110,10 @@ export function AdminItemsPage() {
         limit: 10,
         type: filters.type || undefined,
         status: filters.status || undefined,
+        date: filters.date || undefined,
         includeDeleted: filters.includeDeleted ? true : undefined,
       }),
-    [page, filters.type, filters.status, filters.includeDeleted]
+    [page, filters.type, filters.status, filters.date, filters.includeDeleted]
   );
 
   const closeDialog = () => {
@@ -165,7 +166,7 @@ export function AdminItemsPage() {
               setPage(1);
             }}
           >
-            <option value="">All types</option>
+            <option value="">All reports</option>
             <option value="lost">Lost</option>
             <option value="found">Found</option>
           </select>
@@ -186,6 +187,17 @@ export function AdminItemsPage() {
               </option>
             ))}
           </select>
+        </Field>
+        <Field id="admin-filter-date" label="Reported on" hint="Calendar day in the reporting timezone.">
+          <input
+            id="admin-filter-date"
+            type="date"
+            value={filters.date}
+            onChange={(event) => {
+              setFilters({ ...filters, date: event.target.value });
+              setPage(1);
+            }}
+          />
         </Field>
         <div className="filters__actions">
           <label className="checkbox">

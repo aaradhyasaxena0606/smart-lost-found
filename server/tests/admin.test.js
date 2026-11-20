@@ -398,3 +398,56 @@ describe('Consistent error responses', () => {
     assert.ok(!/SELECT|INSERT|UPDATE|FROM items/.test(body), 'no SQL fragments');
   });
 });
+
+describe('Reports by day', () => {
+  test('counts reports of each type for a calendar day', async () => {
+    await scenario();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const all = await api.get(`${API}/admin/reports-by-day?date=${today}`).set(auth(admin.token));
+    assert.equal(all.status, 200);
+    assert.equal(all.body.data.date, today);
+    assert.equal(all.body.data.total, 2);
+    assert.equal(all.body.data.lost, 1);
+    assert.equal(all.body.data.found, 1);
+
+    const lostOnly = await api
+      .get(`${API}/admin/reports-by-day?date=${today}&type=lost`)
+      .set(auth(admin.token));
+    assert.equal(lostOnly.body.data.total, 1);
+    assert.equal(lostOnly.body.data.lost, 1);
+    assert.equal(lostOnly.body.data.found, 1, 'the breakdown still reports both types');
+
+    const foundOnly = await api
+      .get(`${API}/admin/reports-by-day?date=${today}&type=found`)
+      .set(auth(admin.token));
+    assert.equal(foundOnly.body.data.total, 1);
+
+    const emptyDay = await api
+      .get(`${API}/admin/reports-by-day?date=2000-01-01`)
+      .set(auth(admin.token));
+    assert.equal(emptyDay.body.data.total, 0);
+  });
+
+  test('rejects a malformed date (422)', async () => {
+    const response = await api.get(`${API}/admin/reports-by-day?date=20-11-2026`).set(auth(admin.token));
+    assert.equal(response.status, 422);
+  });
+
+  test('is forbidden for non-administrators (403)', async () => {
+    const response = await api.get(`${API}/admin/reports-by-day`).set(auth(owner.token));
+    assert.equal(response.status, 403);
+  });
+
+  test('the moderation list accepts the same date filter', async () => {
+    await scenario();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const onDay = await api.get(`${API}/admin/items?date=${today}`).set(auth(admin.token));
+    assert.equal(onDay.status, 200);
+    assert.equal(onDay.body.meta.total, 2);
+
+    const otherDay = await api.get(`${API}/admin/items?date=2000-01-01`).set(auth(admin.token));
+    assert.equal(otherDay.body.meta.total, 0);
+  });
+});

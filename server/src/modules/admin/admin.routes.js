@@ -20,6 +20,7 @@ import { sendOk } from '../../utils/respond.js';
 import { notFound, badRequest, conflict } from '../../utils/httpError.js';
 import { query, withTransaction } from '../../config/db.js';
 import { parsePagination, buildPageMeta } from '../../utils/pagination.js';
+import config from '../../config/env.js';
 import { canTransition, ALLOWED_TRANSITIONS } from '../items/items.service.js';
 import * as auditService from '../../services/audit.service.js';
 import * as notificationService from '../../services/notification.service.js';
@@ -40,12 +41,25 @@ const adminItemsQuerySchema = z.object({
   type: z.enum(['lost', 'found']).optional(),
   status: z.enum(['open', 'matched', 'claimed', 'returned', 'closed', 'rejected']).optional(),
   reporterId: z.coerce.number().int().positive().optional(),
+  // Calendar day in REPORT_TIMEZONE; used by the moderation filters.
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+    .optional(),
   includeDeleted: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
     .optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+const dailyReportsQuerySchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+    .optional(),
+  type: z.enum(['all', 'lost', 'found']).default('all'),
 });
 
 const auditQuerySchema = z.object({
@@ -96,6 +110,14 @@ adminRouter.get(
     if (params.reporterId) {
       values.push(params.reporterId);
       conditions.push(`i.reporter_id = $${values.length}`);
+    }
+    if (params.date) {
+      values.push(params.date);
+      const dateIndex = values.length;
+      values.push(config.reportTimezone);
+      conditions.push(
+        `(i.created_at AT TIME ZONE $${values.length})::date = $${dateIndex}::date`
+      );
     }
     if (!params.includeDeleted) conditions.push('i.deleted_at IS NULL');
 
@@ -298,6 +320,44 @@ adminRouter.get(
 // ---------------------------------------------------------------------------
 // Counters and accounts
 // ---------------------------------------------------------------------------
+/**
+ * "How many reports were marked on this day?" — the counters the dashboard shows
+ * are all-time totals, so this answers the per-day question.
+ *
+ * The day is evaluated in REPORT_TIMEZONE so a report filed at 01:00 IST counts
+ * on that local date rather than the previous UTC one.
+ */
+adminRouter.get(
+  '/reports-by-day',
+  validate({ query: dailyReportsQuerySchema }),
+  asyncHandler(async (req, res) => {
+    const params = req.validatedQuery ?? req.query;
+    const date = params.date ?? new Date().toISOString().slice(0, 10);
+
+    const { rows } = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE report_type = 'lost')::int  AS lost,
+         COUNT(*) FILTER (WHERE report_type = 'found')::int AS found
+       FROM items
+      WHERE deleted_at IS NULL
+        AND (created_at AT TIME ZONE $2)::date = $1::date`,
+      [date, config.reportTimezone]
+    );
+
+    const { lost, found } = rows[0];
+    const total = params.type === 'all' ? lost + found : params.type === 'lost' ? lost : found;
+
+    return sendOk(res, {
+      date,
+      type: params.type,
+      timezone: config.reportTimezone,
+      total,
+      lost,
+      found,
+    });
+  })
+);
+
 adminRouter.get(
   '/stats',
   asyncHandler(async (_req, res) => {

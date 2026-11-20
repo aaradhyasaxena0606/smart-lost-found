@@ -75,6 +75,13 @@ const schema = z.object({
   TRUST_PROXY: boolLike.default(false),
   LOG_REQUESTS: boolLike.default(true),
 
+  // Calendar day used by the "reports by day" counters. Timestamps are stored in
+  // UTC; this decides which local day a report belongs to.
+  REPORT_TIMEZONE: z
+    .string()
+    .regex(/^[A-Za-z_]+(?:\/[A-Za-z_+-]+)*$/, 'REPORT_TIMEZONE must be an IANA name such as Asia/Kolkata')
+    .default('UTC'),
+
   // Rate limits. Strict defaults apply in production; development and test are
   // relaxed so the test suite and manual testing are not throttled. Both are
   // overridable, so a deployment can tune them without a code change.
@@ -164,6 +171,7 @@ export const config = Object.freeze({
 
   trustProxy: raw.TRUST_PROXY,
   logRequests: raw.LOG_REQUESTS,
+  reportTimezone: raw.REPORT_TIMEZONE,
 
   rateLimit: Object.freeze({
     windowMs: raw.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
