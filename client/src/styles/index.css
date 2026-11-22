@@ -526,3 +526,7 @@ code {
 }
 .admin-tab:hover { background: #eef1f5; color: var(--colour-text); }
 .admin-tab--active { background: var(--colour-primary); color: #fff; font-weight: 600; }
+.day-status-heading { font-size: 0.9rem; margin: var(--space-4) 0 var(--space-2); color: var(--colour-muted); }
+.day-status-list { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0; padding: 0; }
+.day-status-list li { display: flex; align-items: center; gap: var(--space-2); }
+.day-status-list strong { font-size: 1.05rem; }

@@ -416,7 +416,9 @@ describe('Reports by day', () => {
       .set(auth(admin.token));
     assert.equal(lostOnly.body.data.total, 1);
     assert.equal(lostOnly.body.data.lost, 1);
-    assert.equal(lostOnly.body.data.found, 1, 'the breakdown still reports both types');
+    assert.equal(lostOnly.body.data.found, 1, 'the lost/found split is always reported');
+    assert.equal(lostOnly.body.data.byStatus.open, 1, 'the status breakdown respects the selected type');
+    assert.equal(all.body.data.byStatus.open, 2, 'both reports are open');
 
     const foundOnly = await api
       .get(`${API}/admin/reports-by-day?date=${today}&type=found`)

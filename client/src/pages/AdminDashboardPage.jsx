@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { adminApi } from '../api/endpoints.js';
 import { useAsyncData } from '../hooks/useAsyncData.js';
 import { Loading, ErrorMessage, Field } from '../components/Feedback.jsx';
+import { ItemStatusBadge, ITEM_STATUS_OPTIONS } from '../components/Badges.jsx';
 
 /** Today's date in the browser's timezone, as YYYY-MM-DD. */
 function todayLocal() {
@@ -105,15 +106,33 @@ export function AdminDashboardPage() {
         {dayQuery.loading ? <Loading label="Counting…" /> : null}
         <ErrorMessage error={dayQuery.error} onRetry={dayQuery.reload} />
         {dayQuery.data ? (
-          <div className="stat-grid">
-            <Stat
-              label={dayFilter.type === 'all' ? 'Total reports' : dayFilter.type === 'lost' ? 'Lost reports' : 'Found reports'}
-              value={dayQuery.data.total}
-              hint={dayQuery.data.date}
-            />
-            <Stat label="Lost that day" value={dayQuery.data.lost} />
-            <Stat label="Found that day" value={dayQuery.data.found} />
-          </div>
+          <>
+            {dayFilter.type === 'all' ? (
+              <div className="stat-grid">
+                <Stat label="Total reports" value={dayQuery.data.total} hint={dayQuery.data.date} />
+                <Stat label="Lost that day" value={dayQuery.data.lost} />
+                <Stat label="Found that day" value={dayQuery.data.found} />
+              </div>
+            ) : (
+              <div className="stat-grid">
+                <Stat
+                  label={dayFilter.type === 'lost' ? 'Lost reports' : 'Found reports'}
+                  value={dayQuery.data.total}
+                  hint={dayQuery.data.date}
+                />
+              </div>
+            )}
+
+            <h3 className="day-status-heading">By status</h3>
+            <ul className="day-status-list">
+              {ITEM_STATUS_OPTIONS.map((option) => (
+                <li key={option.value}>
+                  <ItemStatusBadge status={option.value} />
+                  <strong>{dayQuery.data.byStatus?.[option.value] ?? 0}</strong>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
       </section>
 

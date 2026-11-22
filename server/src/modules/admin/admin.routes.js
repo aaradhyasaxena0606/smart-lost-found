@@ -337,14 +337,22 @@ adminRouter.get(
     const { rows } = await query(
       `SELECT
          COUNT(*) FILTER (WHERE report_type = 'lost')::int  AS lost,
-         COUNT(*) FILTER (WHERE report_type = 'found')::int AS found
+         COUNT(*) FILTER (WHERE report_type = 'found')::int AS found,
+         -- Status breakdown for the selected type (or every type when 'all').
+         COUNT(*) FILTER (WHERE status = 'open'     AND ($3::text = 'all' OR report_type = $3))::int AS open,
+         COUNT(*) FILTER (WHERE status = 'matched'  AND ($3::text = 'all' OR report_type = $3))::int AS matched,
+         COUNT(*) FILTER (WHERE status = 'claimed'  AND ($3::text = 'all' OR report_type = $3))::int AS claimed,
+         COUNT(*) FILTER (WHERE status = 'returned' AND ($3::text = 'all' OR report_type = $3))::int AS returned,
+         COUNT(*) FILTER (WHERE status = 'closed'   AND ($3::text = 'all' OR report_type = $3))::int AS closed,
+         COUNT(*) FILTER (WHERE status = 'rejected' AND ($3::text = 'all' OR report_type = $3))::int AS rejected
        FROM items
       WHERE deleted_at IS NULL
         AND (created_at AT TIME ZONE $2)::date = $1::date`,
-      [date, config.reportTimezone]
+      [date, config.reportTimezone, params.type]
     );
 
-    const { lost, found } = rows[0];
+    const row = rows[0];
+    const { lost, found, ...byStatus } = row;
     const total = params.type === 'all' ? lost + found : params.type === 'lost' ? lost : found;
 
     return sendOk(res, {
@@ -354,6 +362,7 @@ adminRouter.get(
       total,
       lost,
       found,
+      byStatus,
     });
   })
 );
