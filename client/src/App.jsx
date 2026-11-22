@@ -20,6 +20,7 @@ import MatchesPage from './pages/MatchesPage.jsx';
 import MyClaimsPage from './pages/MyClaimsPage.jsx';
 import ReceivedClaimsPage from './pages/ReceivedClaimsPage.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
+import AdminLayout from './components/AdminLayout.jsx';
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx';
 import AdminItemsPage from './pages/AdminItemsPage.jsx';
 import AdminClaimsPage from './pages/AdminClaimsPage.jsx';
@@ -104,42 +105,16 @@ export function App() {
             path="/admin"
             element={
               <AdminRoute>
-                <AdminDashboardPage />
+                <AdminLayout />
               </AdminRoute>
             }
-          />
-          <Route
-            path="/admin/items"
-            element={
-              <AdminRoute>
-                <AdminItemsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/admin/claims"
-            element={
-              <AdminRoute>
-                <AdminClaimsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/admin/audit"
-            element={
-              <AdminRoute>
-                <AdminAuditPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <AdminRoute>
-                <AdminUsersPage />
-              </AdminRoute>
-            }
-          />
+          >
+            <Route index element={<AdminDashboardPage />} />
+            <Route path="claims" element={<AdminClaimsPage />} />
+            <Route path="items" element={<AdminItemsPage />} />
+            <Route path="audit" element={<AdminAuditPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+          </Route>
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

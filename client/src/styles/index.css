@@ -504,3 +504,25 @@ code {
 .compare h4 { margin-top: 0; }
 .filters__note { grid-column: 1 / -1; margin: 0; }
 .compare--single { grid-template-columns: 1fr; }
+
+/* Administration section tabs (rendered by AdminLayout) */
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  padding: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+.admin-tab {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--colour-muted);
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+.admin-tab:hover { background: #eef1f5; color: var(--colour-text); }
+.admin-tab--active { background: var(--colour-primary); color: #fff; font-weight: 600; }
